@@ -71,6 +71,11 @@ by whom; the page shows this in the always-visible attribution box.
 
 ### Known data quirks
 
+- The MOJ layer covers only about 45% of the city's lots. 501 of the 842 MOJ
+  sheets (about 454,000 lots) use arbitrary coordinates and cannot be
+  georeferenced; they are mostly in the south and along the coast (沼隈, 内海,
+  鞆, 松永, 金江, 瀬戸, 熊野, ...), while 神辺, 駅家, 新市, 加茂, 芦田 and 山野
+  are fully covered.
 - 27 place names in the city data contain vendor gaiji (Private Use Area code
   points) with no published mapping. They are shown as `〓`.
 - Lot numbers such as `-` or `9999` come from the source as is.
