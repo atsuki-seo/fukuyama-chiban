@@ -564,6 +564,17 @@ const map = new maplibregl.Map({
 map.touchZoomRotate.disableRotation();
 map.keyboard.disableRotation();
 
+// MapLibre ignores the first ResizeObserver callback as the initial one. In a
+// tab that starts hidden (e.g. opened in the background) that first callback
+// already carries the real size, so the map stays at the placeholder size.
+function syncSize() {
+  const el = map.getContainer();
+  if (map.getPixelRatio() !== window.devicePixelRatio) map.setPixelRatio(window.devicePixelRatio);
+  if (el.clientWidth !== map.transform.width || el.clientHeight !== map.transform.height) map.resize();
+}
+new ResizeObserver(syncSize).observe(map.getContainer());
+document.addEventListener('visibilitychange', syncSize);
+
 const nav = new maplibregl.NavigationControl({ showCompass: false });
 const geo = new maplibregl.GeolocateControl({
   positionOptions: { enableHighAccuracy: true, timeout: 15000 },
