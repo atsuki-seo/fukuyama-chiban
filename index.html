@@ -1,0 +1,1088 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="robots" content="noindex, nofollow, noarchive">
+<meta name="description" content="福山市の地番図と登記所備付地図を空中写真に重ねて表示する地図">
+<title>福山市 地番マップ</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='6' fill='%233a5a2a'/%3E%3Cpath d='M4 10h12v8H4zM16 4h12v14H16zM4 18h16v10H4zM20 18h8v10h-8z' fill='none' stroke='%23FFD400' stroke-width='2'/%3E%3C/svg%3E">
+<link rel="preconnect" href="https://cyberjapandata.gsi.go.jp">
+<link rel="stylesheet" href="https://unpkg.com/maplibre-gl@5.24.0/dist/maplibre-gl.css" integrity="sha384-uTttxo/aOKbdE5RlD/SPzSDoDmNvGlUYPjONi2MN/b7c9HPSvW07OIuyP7uL6jxK" crossorigin="anonymous">
+<script src="https://unpkg.com/maplibre-gl@5.24.0/dist/maplibre-gl.js" integrity="sha384-5+cfbwT0iiub6VsQAdn6yz16nr6sDiQoHx6tm4O8OVYXHYOxcffFmCJBL0dgdvGp" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/pmtiles@4.5.0/dist/pmtiles.js" integrity="sha384-pbKNZbDshUsLnZMIVsn/t+j3xEY9PGfuX5Z22l5rcy/obXz3EwaMx1F5d9sRsJMn" crossorigin="anonymous"></script>
+<style>
+:root {
+  --fg: #1b1b1b;
+  --fg-sub: #4a4a4a;
+  --bg: #ffffff;
+  --bg-sub: #f2f2f2;
+  --line: #c9c9c9;
+  --accent: #0b57d0;
+  --focus: #0b57d0;
+  --radius: 8px;
+  --shadow: 0 2px 10px rgba(0, 0, 0, .25);
+  --attr-h: 0px;
+  --gap: 10px;
+}
+* { box-sizing: border-box; }
+html, body { margin: 0; height: 100%; }
+body {
+  font-family: system-ui, -apple-system, "Hiragino Sans", "Noto Sans JP", "Yu Gothic UI", Meiryo, sans-serif;
+  font-size: 14px;
+  line-height: 1.5;
+  color: var(--fg);
+  background: #000;
+  overflow: hidden;
+}
+#map { position: fixed; inset: 0; }
+a { color: var(--accent); }
+:focus-visible { outline: 3px solid var(--focus); outline-offset: 2px; }
+button, input, select { font: inherit; color: inherit; }
+button { cursor: pointer; }
+.visually-hidden {
+  position: absolute; width: 1px; height: 1px; margin: -1px; padding: 0;
+  overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; border: 0;
+}
+
+/* ---------- panel ---------- */
+#panel {
+  position: fixed; top: var(--gap); left: var(--gap); z-index: 3;
+  width: 280px; max-height: calc(100% - 2 * var(--gap) - 40px);
+  overflow-y: auto; overscroll-behavior: contain;
+  background: var(--bg); border-radius: var(--radius); box-shadow: var(--shadow);
+  padding: 12px 14px 14px;
+}
+#panel header { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+#panel h1 { font-size: 16px; margin: 0; }
+#panel .edition { margin: 2px 0 0; font-size: 12px; color: var(--fg-sub); }
+#panel fieldset { border: 0; border-top: 1px solid var(--line); margin: 12px 0 0; padding: 10px 0 0; min-width: 0; }
+#panel legend { font-weight: 700; padding: 0; margin-bottom: 4px; float: left; width: 100%; }
+#panel legend + * { clear: both; }
+.opt { display: flex; align-items: center; gap: 8px; min-height: 36px; }
+.opt input[type=radio], .opt input[type=checkbox] { width: 20px; height: 20px; margin: 0; flex: none; accent-color: var(--accent); }
+.opt label { flex: 1; cursor: pointer; display: flex; align-items: center; gap: 8px; min-height: 36px; }
+.swatch { flex: none; width: 34px; height: 12px; border-radius: 2px; background: #6b6b6b; display: inline-flex; align-items: center; }
+.swatch svg { display: block; }
+.note { font-size: 12px; color: var(--fg-sub); margin: 2px 0 6px 28px; }
+.slider { display: grid; grid-template-columns: 1fr auto; align-items: center; column-gap: 8px; margin: 2px 0 6px 28px; }
+.slider label { font-size: 13px; }
+.slider output { font-size: 12px; color: var(--fg-sub); min-width: 3.5em; text-align: right; font-variant-numeric: tabular-nums; }
+.slider input { grid-column: 1 / -1; width: 100%; height: 28px; margin: 0; accent-color: var(--accent); }
+.slider input:disabled { opacity: .45; }
+#photo-adjust.disabled .slider label { color: var(--fg-sub); }
+
+#search-form .row { display: flex; gap: 6px; margin-top: 4px; }
+#q {
+  flex: 1; min-width: 0; height: 40px; padding: 0 10px;
+  border: 1px solid #8a8a8a; border-radius: 6px; background: #fff;
+}
+.btn {
+  height: 40px; min-width: 44px; padding: 0 12px; border-radius: 6px;
+  border: 1px solid var(--accent); background: var(--accent); color: #fff; font-weight: 700;
+}
+.btn.secondary { background: #fff; color: var(--accent); }
+.icon-btn {
+  width: 44px; height: 44px; flex: none; border: 0; border-radius: 22px;
+  background: transparent; font-size: 22px; line-height: 1; color: var(--fg);
+}
+.icon-btn:hover { background: var(--bg-sub); }
+#search-status { font-size: 13px; color: var(--fg-sub); margin: 6px 0 0; min-height: 0; }
+#search-status:empty { display: none; }
+#results { list-style: none; padding: 0; margin: 6px 0 0; }
+#results:empty { display: none; }
+#results li + li { border-top: 1px solid var(--bg-sub); }
+#results button {
+  width: 100%; min-height: 44px; text-align: left; border: 0; background: transparent;
+  padding: 6px 8px; border-radius: 6px; display: flex; justify-content: space-between; gap: 8px;
+}
+#results button:hover { background: var(--bg-sub); }
+#results .sub { color: var(--fg-sub); font-size: 12px; white-space: nowrap; }
+
+#panel-open, #panel-close { display: none; }
+
+/* ---------- info (selected parcel) ---------- */
+.info h2 { font-size: 15px; margin: 0 0 6px; padding-right: 28px; }
+.info section + section { margin-top: 10px; padding-top: 10px; border-top: 1px solid var(--line); }
+.info h3 { font-size: 13px; margin: 0 0 4px; display: flex; align-items: center; gap: 6px; }
+.info dl { display: grid; grid-template-columns: auto 1fr; gap: 2px 10px; margin: 0; font-size: 13px; }
+.info dt { color: var(--fg-sub); }
+.info dd { margin: 0; overflow-wrap: anywhere; }
+.info dd.chiban { font-size: 16px; font-weight: 700; }
+.info .caution { font-size: 12px; color: var(--fg-sub); margin: 10px 0 0; }
+.maplibregl-popup-content { padding: 12px 14px; border-radius: var(--radius); box-shadow: var(--shadow); font-size: 14px; }
+.maplibregl-popup-close-button { width: 36px; height: 36px; font-size: 22px; color: var(--fg); border-radius: 0 var(--radius) 0 0; }
+#info-sheet { display: none; }
+
+/* ---------- attribution / disclaimer ---------- */
+#attribution {
+  position: fixed; right: var(--gap); bottom: var(--gap); z-index: 2;
+  width: 400px; max-width: calc(100% - 2 * var(--gap));
+  max-height: 40vh; overflow-y: auto;
+  background: rgba(255, 255, 255, .94); color: var(--fg);
+  border-radius: var(--radius); box-shadow: var(--shadow);
+  font-size: 11px; line-height: 1.4; padding: 6px 10px;
+}
+#attribution p, #attribution ul { margin: 0; }
+#attribution ul { padding-left: 1.2em; }
+#attribution .warn { font-weight: 700; }
+#attribution .block + .block { margin-top: 4px; }
+#attr-summary { display: none; }
+#attr-toggle { display: none; }
+
+/* ---------- toast & zoom hint ---------- */
+#toast {
+  position: fixed; left: 50%; top: 64px; transform: translateX(-50%); z-index: 6;
+  background: rgba(20, 20, 20, .92); color: #fff; padding: 10px 14px; border-radius: 8px;
+  max-width: min(90vw, 420px); font-size: 14px; box-shadow: var(--shadow);
+  opacity: 0; pointer-events: none; transition: opacity .2s;
+}
+#toast.show { opacity: 1; }
+#zoom-hint {
+  position: fixed; left: 50%; top: 14px; transform: translateX(-50%); z-index: 2;
+  display: none; align-items: center; gap: 10px;
+  background: rgba(255, 255, 255, .95); color: var(--fg); padding: 6px 6px 6px 14px; border-radius: 24px;
+  box-shadow: var(--shadow); font-size: 13px; white-space: nowrap;
+}
+#zoom-hint.show { display: flex; }
+#zoom-hint-btn { height: 32px; }
+
+.maplibregl-ctrl-group button { width: 36px; height: 36px; }
+.maplibregl-ctrl-scale { font-size: 11px; color: #111; }
+
+/* ---------- smartphone (< 768px) ---------- */
+@media (max-width: 767.98px) {
+  :root { --gap: 8px; }
+  #panel-open {
+    display: flex; align-items: center; gap: 6px;
+    position: fixed; top: calc(var(--gap) + env(safe-area-inset-top)); left: var(--gap); z-index: 2;
+    height: 44px; padding: 0 14px; border: 0; border-radius: 22px;
+    background: var(--bg); box-shadow: var(--shadow); font-weight: 700;
+  }
+  #panel-close { display: inline-block; }
+  #panel, #info-sheet {
+    top: auto; left: 0; right: 0; bottom: var(--attr-h);
+    width: auto; max-height: min(62vh, calc(100% - var(--attr-h) - 70px));
+    border-radius: 14px 14px 0 0; padding: 10px 14px calc(14px + env(safe-area-inset-bottom));
+    box-shadow: 0 -2px 12px rgba(0, 0, 0, .3);
+  }
+  #panel { display: none; }
+  #panel.open { display: block; }
+  #panel h1 { font-size: 15px; }
+  .opt, .opt label { min-height: 44px; }
+  .slider input { height: 44px; }
+  #info-sheet { position: fixed; z-index: 4; background: var(--bg); overflow-y: auto; }
+  #info-sheet.open { display: block; }
+  #info-sheet .close { position: absolute; top: 4px; right: 6px; }
+
+  #attribution {
+    left: 0; right: 0; bottom: 0; width: auto; max-width: none;
+    border-radius: 0; max-height: 50vh; padding: 4px 8px calc(4px + env(safe-area-inset-bottom));
+    font-size: 11px;
+  }
+  #attribution:not(.expanded) .full { display: none; }
+  #attr-summary { display: block; }
+  #attribution.expanded #attr-summary { display: none; }
+  #attr-toggle {
+    display: inline-flex; align-items: center; min-height: 44px; min-width: 52px; justify-content: center;
+    border: 1px solid var(--line); background: #fff; border-radius: 22px; padding: 0 10px; font-size: 12px;
+    float: right; margin: 0 0 0 8px;
+  }
+  .maplibregl-ctrl-group button { width: 44px; height: 44px; }
+  #q, #search-form .btn, #zoom-hint-btn { height: 44px; }
+  .maplibregl-ctrl-top-right { top: auto; bottom: calc(var(--attr-h) + 6px); }
+  .maplibregl-ctrl-bottom-left { bottom: var(--attr-h); }
+  #zoom-hint { top: calc(var(--gap) + 52px + env(safe-area-inset-top)); }
+  #toast { top: calc(110px + env(safe-area-inset-top)); }
+}
+</style>
+</head>
+<body>
+<div id="map" aria-label="地番を重ねた地図"></div>
+
+<button id="panel-open" type="button" aria-controls="panel" aria-expanded="false"><span aria-hidden="true">☰</span>表示設定・検索</button>
+
+<aside id="panel" aria-labelledby="panel-title">
+  <header>
+    <div>
+      <h1 id="panel-title">福山市 地番マップ</h1>
+      <p class="edition" id="edition"></p>
+    </div>
+    <button id="panel-close" class="icon-btn" type="button" aria-label="設定を閉じる">×</button>
+  </header>
+
+  <fieldset>
+    <legend>地番検索</legend>
+    <form id="search-form" role="search" autocomplete="off">
+      <label for="q" class="note" style="margin-left:0">大字・町名と地番を入力（例：青葉台一丁目 4-1）</label>
+      <div class="row">
+        <input id="q" type="search" placeholder="例：神辺町大字川北 123" enterkeyhint="search" aria-describedby="search-status">
+        <button class="btn" type="submit">検索</button>
+      </div>
+      <p id="search-status" role="status" aria-live="polite"></p>
+      <ul id="results" aria-label="検索結果"></ul>
+    </form>
+  </fieldset>
+
+  <fieldset id="bg-set">
+    <legend>背景地図</legend>
+    <div class="opt"><input type="radio" name="bg" id="bg-photo" value="photo"><label for="bg-photo">空中写真</label></div>
+    <div class="opt"><input type="radio" name="bg" id="bg-pale" value="pale"><label for="bg-pale">淡色地図（地番が見やすい）</label></div>
+    <div class="opt"><input type="radio" name="bg" id="bg-std" value="std"><label for="bg-std">標準地図</label></div>
+  </fieldset>
+
+  <fieldset>
+    <legend>地番</legend>
+    <div class="opt">
+      <input type="checkbox" id="lyr-city">
+      <label for="lyr-city"><span class="swatch" id="sw-city" aria-hidden="true"></span>地番図（市）・実線</label>
+    </div>
+    <div class="slider">
+      <label for="op-city">線の不透明度</label><output for="op-city" id="op-city-out"></output>
+      <input type="range" id="op-city" min="20" max="100" step="5">
+    </div>
+    <div class="opt">
+      <input type="checkbox" id="lyr-moj">
+      <label for="lyr-moj"><span class="swatch" id="sw-moj" aria-hidden="true"></span>法務局地図・破線</label>
+    </div>
+    <div class="slider">
+      <label for="op-moj">線の不透明度</label><output for="op-moj" id="op-moj-out"></output>
+      <input type="range" id="op-moj" min="20" max="100" step="5">
+    </div>
+    <div class="opt">
+      <input type="checkbox" id="lyr-label">
+      <label for="lyr-label">地番ラベル（ズーム 17 以上）</label>
+    </div>
+    <div class="opt">
+      <input type="checkbox" id="lyr-mask">
+      <label for="lyr-mask">福山市の外側を暗くする</label>
+    </div>
+    <p class="note" style="margin-left:0">地番図（市）と法務局地図は作成方法が異なり、線の位置や区画は一致しません。</p>
+  </fieldset>
+
+  <fieldset id="photo-adjust">
+    <legend>空中写真の調整</legend>
+    <div class="slider" style="margin-left:0">
+      <label for="photo-bright">明るさ</label><output for="photo-bright" id="photo-bright-out"></output>
+      <input type="range" id="photo-bright" min="-50" max="50" step="5">
+    </div>
+    <div class="slider" style="margin-left:0">
+      <label for="photo-contrast">コントラスト</label><output for="photo-contrast" id="photo-contrast-out"></output>
+      <input type="range" id="photo-contrast" min="-50" max="50" step="5">
+    </div>
+  </fieldset>
+</aside>
+
+<div id="info-sheet" role="dialog" aria-modal="false" aria-label="選択した筆の情報">
+  <button class="icon-btn close" type="button" aria-label="選択を解除して閉じる">×</button>
+  <div class="body"></div>
+</div>
+
+<footer id="attribution" aria-label="出典と注意事項">
+  <button id="attr-toggle" type="button" aria-expanded="false" aria-controls="attr-full">詳細</button>
+  <p id="attr-summary"></p>
+  <div id="attr-full" class="full"></div>
+</footer>
+
+<div id="zoom-hint" role="status"><span id="zoom-hint-text"></span><button class="btn secondary" type="button" id="zoom-hint-btn">拡大</button></div>
+<div id="toast" role="status" aria-live="polite"></div>
+
+<script>
+'use strict';
+
+// Version, update date and data editions live here only.
+const APP = {
+  version: '1.0.0',
+  updated: '2026-10-06',
+  author: 'atsuki-seo',
+  center: [133.362, 34.490],
+  zoom: 15,
+  // Fukuyama outline bbox (133.2102, 34.3094)-(133.4710, 34.7125) plus a margin.
+  bounds: [[133.17, 34.27], [133.51, 34.75]],
+  minZoom: 10,
+  maxZoom: 20,
+  data: {
+    city: {
+      title: '地番図（市）',
+      name: '福山市地番図データ（2026年度）',
+      edition: '2026年度版（2026年1月1日現在）',
+      publisher: '福山市',
+      url: 'https://data.city.fukuyama.hiroshima.jp/dataset/digital_numbers_map',
+      files: [0, 1, 2].map(k => `chiban_fukuyama_2026_${k}.pmtiles`),
+    },
+    moj: {
+      title: '法務局地図',
+      name: '登記所備付地図データ 福山市',
+      edition: '2026年度版',
+      publisher: '法務省',
+      url: 'https://www.geospatial.jp/ckan/dataset/houmusyouchizu-2026-1-1553',
+      accessed: '2026年10月6日',
+      files: [0, 1, 2].map(k => `houmukyoku_fukuyama_2026_${k}.pmtiles`),
+    },
+    search: {
+      name: 'アドレス・ベース・レジストリ 地番マスター位置参照拡張（福山市）',
+      publisher: 'デジタル庁',
+      url: 'https://dataset.address-br.digital.go.jp/dataset/ba-o1-342076_g2-000011',
+    },
+    mask: {
+      name: '国勢調査町丁・字等別境界データセット',
+      url: 'https://geoshape.ex.nii.ac.jp/ka/resource/34207.html',
+      admin: '国土数値情報（行政区域データ）2026年',
+      adminUrl: 'https://nlftp.mlit.go.jp/ksj/gml/datalist/KsjTmplt-N03-2026.html',
+    },
+  },
+};
+
+const GSI_LIST = 'https://maps.gsi.go.jp/development/ichiran.html';
+const BACKGROUNDS = {
+  photo: { label: 'シームレス空中写真', tiles: 'https://cyberjapandata.gsi.go.jp/xyz/seamlessphoto/{z}/{x}/{y}.jpg' },
+  std: { label: '標準地図', tiles: 'https://cyberjapandata.gsi.go.jp/xyz/std/{z}/{x}/{y}.png' },
+  pale: { label: '淡色地図', tiles: 'https://cyberjapandata.gsi.go.jp/xyz/pale/{z}/{x}/{y}.png' },
+};
+const PALETTE = {
+  photo: { city: '#FFD400', moj: '#00E5FF', text: '#FFFFFF', halo: 'rgba(0,0,0,0.85)', mojText: '#B9F6FF' },
+  map: { city: '#C62828', moj: '#1565C0', text: '#1B1B1B', halo: 'rgba(255,255,255,0.95)', mojText: '#0D3C78' },
+};
+const MOJ_DASH = [5, 3]; // px; line-dasharray is in line-width units
+
+const isMobile = () => window.matchMedia('(max-width: 767.98px)').matches;
+const $ = sel => document.querySelector(sel);
+const BASE = location.href.replace(/[?#].*$/, '').replace(/[^/]*$/, '');
+
+const state = {
+  bg: 'photo',
+  city: true,
+  moj: true,
+  label: true,
+  mask: true,
+  opCity: 90,
+  opMoj: 90,
+  bright: 0,
+  contrast: 0,
+};
+const selection = { city: null, moj: null, lngLat: null };
+
+// ---------------------------------------------------------------- hash (F9)
+
+function parseHash() {
+  const out = {};
+  const h = location.hash.replace(/^#/, '');
+  for (const part of h.split('&')) {
+    const i = part.indexOf('=');
+    if (i > 0) out[part.slice(0, i)] = decodeURIComponent(part.slice(i + 1));
+  }
+  const view = {};
+  if (out.map) {
+    const [z, lat, lng] = out.map.split('/').map(Number);
+    if ([z, lat, lng].every(Number.isFinite)) Object.assign(view, { zoom: z, center: [lng, lat] });
+  }
+  if (out.bg in BACKGROUNDS) view.bg = out.bg;
+  if (typeof out.layers === 'string') {
+    const on = new Set(out.layers.split(',').filter(Boolean));
+    view.layers = { city: on.has('city'), moj: on.has('moj'), label: on.has('label'), mask: on.has('mask') };
+  }
+  return view;
+}
+
+let hashTimer = 0;
+function writeHash() {
+  clearTimeout(hashTimer);
+  hashTimer = setTimeout(() => {
+    const c = map.getCenter();
+    const layers = ['city', 'moj', 'label', 'mask'].filter(k => state[k]).join(',');
+    const h = `#map=${map.getZoom().toFixed(2)}/${c.lat.toFixed(5)}/${c.lng.toFixed(5)}&bg=${state.bg}&layers=${layers}`;
+    if (h !== location.hash) history.replaceState(null, '', h);
+  }, 250);
+}
+
+const initial = parseHash();
+if (initial.bg) state.bg = initial.bg;
+if (initial.layers) Object.assign(state, initial.layers);
+
+// ---------------------------------------------------------------- style
+
+const protocol = new pmtiles.Protocol();
+maplibregl.addProtocol('pmtiles', protocol.tile);
+
+function widthExpr() {
+  return ['interpolate', ['linear'], ['zoom'], 15, 0.6, 18, 1.6];
+}
+function widthAt(z) {
+  return 0.6 + (Math.min(Math.max(z, 15), 18) - 15) * (1.0 / 3);
+}
+function dashExpr() {
+  // Keep the dash at 5px/3px on screen while the line width changes.
+  const step = ['step', ['zoom']];
+  const at = z => MOJ_DASH.map(v => +(v / widthAt(z)).toFixed(2));
+  step.push(['literal', at(15)]);
+  for (const z of [16, 17, 18]) step.push(z, ['literal', at(z)]);
+  return step;
+}
+
+const DATASETS = {
+  city: { srcLayer: 'chiban', labelLayer: 'chiban_label', files: APP.data.city.files },
+  moj: { srcLayer: 'houmukyoku', labelLayer: 'houmukyoku_label', files: APP.data.moj.files },
+};
+const layerIds = { hit: [], sel: { city: [], moj: [] }, selLine: { city: [], moj: [] }, line: { city: [], moj: [] }, label: { city: [], moj: [] } };
+
+function buildStyle() {
+  const sources = {};
+  const layers = [];
+  for (const [id, bg] of Object.entries(BACKGROUNDS)) {
+    sources[`bg-${id}`] = {
+      type: 'raster', tiles: [bg.tiles], tileSize: 256, minzoom: 2, maxzoom: 18,
+    };
+    layers.push({
+      id: `bg-${id}`, type: 'raster', source: `bg-${id}`,
+      layout: { visibility: state.bg === id ? 'visible' : 'none' },
+      paint: { 'raster-fade-duration': 150 },
+    });
+  }
+  sources.mask = { type: 'geojson', data: BASE + 'fukuyama_mask.geojson' };
+  layers.push({
+    id: 'mask', type: 'fill', source: 'mask',
+    layout: { visibility: state.mask ? 'visible' : 'none' },
+    paint: { 'fill-color': '#000', 'fill-opacity': 0.65, 'fill-antialias': false },
+  });
+
+  for (const [key, ds] of Object.entries(DATASETS)) {
+    ds.files.forEach((f, k) => {
+      sources[`${key}-${k}`] = { type: 'vector', url: `pmtiles://${BASE}${f}` };
+    });
+  }
+  const polygon = ['==', ['geometry-type'], 'Polygon'];
+  const each = (key, fn) => DATASETS[key].files.forEach((_, k) => fn(`${key}-${k}`, k));
+
+  // 2: click targets and selection
+  for (const key of ['city', 'moj']) {
+    each(key, (src, k) => {
+      const id = `${key}-hit-${k}`;
+      layerIds.hit.push(id);
+      layers.push({
+        id, type: 'fill', source: src, 'source-layer': DATASETS[key].srcLayer, minzoom: 16,
+        filter: polygon, layout: { visibility: state[key] ? 'visible' : 'none' },
+        paint: { 'fill-color': '#000', 'fill-opacity': 0 },
+      });
+    });
+  }
+  for (const key of ['city', 'moj']) {
+    each(key, (src, k) => {
+      const id = `${key}-sel-${k}`;
+      layerIds.sel[key].push(id);
+      layers.push({
+        id, type: 'fill', source: src, 'source-layer': DATASETS[key].srcLayer, minzoom: 15,
+        filter: ['all', polygon, ['==', ['id'], -1]],
+        paint: { 'fill-color': '#FFD400', 'fill-opacity': 0.25 },
+      });
+    });
+  }
+  // 3, 4: lines
+  for (const key of ['city', 'moj']) {
+    each(key, (src, k) => {
+      const id = `${key}-line-${k}`;
+      layerIds.line[key].push(id);
+      const paint = {
+        'line-color': PALETTE[state.bg === 'photo' ? 'photo' : 'map'][key],
+        'line-width': widthExpr(),
+        'line-opacity': (key === 'city' ? state.opCity : state.opMoj) / 100,
+      };
+      if (key === 'moj') paint['line-dasharray'] = dashExpr();
+      layers.push({
+        id, type: 'line', source: src, 'source-layer': DATASETS[key].srcLayer, minzoom: 15,
+        layout: { visibility: state[key] ? 'visible' : 'none', 'line-join': 'round' },
+        paint,
+      });
+    });
+  }
+  for (const key of ['city', 'moj']) {
+    each(key, (src, k) => {
+      const id = `${key}-selline-${k}`;
+      layerIds.selLine[key].push(id);
+      layers.push({
+        id, type: 'line', source: src, 'source-layer': DATASETS[key].srcLayer, minzoom: 15,
+        filter: ['all', polygon, ['==', ['id'], -1]],
+        paint: { 'line-color': '#FF6F00', 'line-width': ['interpolate', ['linear'], ['zoom'], 15, 2, 18, 3.5] },
+      });
+    });
+  }
+  // 5: labels; city last so it wins label collisions.
+  for (const key of ['moj', 'city']) {
+    each(key, (src, k) => {
+      const id = `${key}-label-${k}`;
+      layerIds.label[key].push(id);
+      const pal = PALETTE[state.bg === 'photo' ? 'photo' : 'map'];
+      const layout = {
+        visibility: state[key] && state.label ? 'visible' : 'none',
+        'text-field': ['get', 'chiban'],
+        'text-font': ['Noto Sans Medium'],
+        'text-size': ['interpolate', ['linear'], ['zoom'], 17, 11, 19, 14],
+        'text-padding': 1,
+        'text-max-width': 20,
+      };
+      if (key === 'city') {
+        layout['text-rotate'] = ['coalesce', ['get', 'rot'], 0];
+        layout['text-rotation-alignment'] = 'map';
+      }
+      layers.push({
+        id, type: 'symbol', source: src, 'source-layer': DATASETS[key].labelLayer, minzoom: 17,
+        layout,
+        paint: {
+          'text-color': key === 'city' ? pal.text : pal.mojText,
+          'text-halo-color': pal.halo,
+          'text-halo-width': 1.5,
+        },
+      });
+    });
+  }
+  return {
+    version: 8,
+    glyphs: BASE + 'fonts/{fontstack}/{range}.pbf',
+    sources,
+    layers,
+  };
+}
+
+// ---------------------------------------------------------------- map
+
+const map = new maplibregl.Map({
+  container: 'map',
+  style: buildStyle(),
+  center: initial.center || APP.center,
+  zoom: initial.zoom ?? APP.zoom,
+  minZoom: APP.minZoom,
+  maxZoom: APP.maxZoom,
+  maxBounds: APP.bounds,
+  maxPitch: 0,
+  dragRotate: false,
+  pitchWithRotate: false,
+  touchPitch: false,
+  attributionControl: false,
+  // GSI asks users not to prefetch tiles.
+  prefetchZoomDelta: 0,
+  localIdeographFontFamily: '"Hiragino Sans", "Noto Sans JP", "Yu Gothic", Meiryo, sans-serif',
+});
+map.touchZoomRotate.disableRotation();
+map.keyboard.disableRotation();
+
+const nav = new maplibregl.NavigationControl({ showCompass: false });
+const geo = new maplibregl.GeolocateControl({
+  positionOptions: { enableHighAccuracy: true, timeout: 15000 },
+  trackUserLocation: false,
+  fitBoundsOptions: { maxZoom: 17 },
+});
+map.addControl(nav, 'top-right');
+map.addControl(geo, 'top-right');
+map.addControl(new maplibregl.ScaleControl({ unit: 'metric', maxWidth: 120 }), 'bottom-left');
+
+geo.on('outofmaxbounds', () => toast('現在地は福山市の表示範囲外です。'));
+geo.on('error', e => toast(e && e.code === 1 ? '位置情報の利用が許可されていません。' : '現在地を取得できませんでした。'));
+
+// ---------------------------------------------------------------- apply state
+
+function setVis(ids, on) {
+  for (const id of ids) map.setLayoutProperty(id, 'visibility', on ? 'visible' : 'none');
+}
+
+function applyBackground() {
+  for (const id of Object.keys(BACKGROUNDS)) map.setLayoutProperty(`bg-${id}`, 'visibility', state.bg === id ? 'visible' : 'none');
+  const pal = PALETTE[state.bg === 'photo' ? 'photo' : 'map'];
+  for (const key of ['city', 'moj']) {
+    for (const id of layerIds.line[key]) map.setPaintProperty(id, 'line-color', pal[key]);
+    for (const id of layerIds.label[key]) {
+      map.setPaintProperty(id, 'text-color', key === 'city' ? pal.text : pal.mojText);
+      map.setPaintProperty(id, 'text-halo-color', pal.halo);
+    }
+  }
+  drawSwatches();
+  const photo = state.bg === 'photo';
+  $('#photo-adjust').classList.toggle('disabled', !photo);
+  for (const el of document.querySelectorAll('#photo-adjust input')) el.disabled = !photo;
+  renderAttribution();
+}
+
+function applyPhoto() {
+  const b = state.bright / 100;
+  map.setPaintProperty('bg-photo', 'raster-brightness-min', b > 0 ? b : 0);
+  map.setPaintProperty('bg-photo', 'raster-brightness-max', b < 0 ? 1 + b : 1);
+  map.setPaintProperty('bg-photo', 'raster-contrast', state.contrast / 100);
+}
+
+function applyLayers() {
+  setVis(layerIds.line.city, state.city);
+  setVis(layerIds.line.moj, state.moj);
+  setVis(layerIds.hit.filter(id => id.startsWith('city')), state.city);
+  setVis(layerIds.hit.filter(id => id.startsWith('moj')), state.moj);
+  setVis(layerIds.sel.city, state.city);
+  setVis(layerIds.selLine.city, state.city);
+  setVis(layerIds.sel.moj, state.moj);
+  setVis(layerIds.selLine.moj, state.moj);
+  setVis(layerIds.label.city, state.city && state.label);
+  setVis(layerIds.label.moj, state.moj && state.label);
+  map.setLayoutProperty('mask', 'visibility', state.mask ? 'visible' : 'none');
+  if (selection.city !== null && !state.city) selection.city = null;
+  if (selection.moj !== null && !state.moj) selection.moj = null;
+  applySelection();
+  renderAttribution();
+}
+
+function applyOpacity() {
+  for (const id of layerIds.line.city) map.setPaintProperty(id, 'line-opacity', state.opCity / 100);
+  for (const id of layerIds.line.moj) map.setPaintProperty(id, 'line-opacity', state.opMoj / 100);
+}
+
+function swatch(key) {
+  const pal = PALETTE[state.bg === 'photo' ? 'photo' : 'map'];
+  const bg = state.bg === 'photo' ? '#5d5d5d' : '#f4f1ea';
+  return `<svg width="34" height="12" viewBox="0 0 34 12" aria-hidden="true"><rect width="34" height="12" rx="2" fill="${bg}"/>` +
+    `<line x1="2" y1="6" x2="32" y2="6" stroke="${pal[key]}" stroke-width="2.5"${key === 'moj' ? ' stroke-dasharray="5 3"' : ''}/></svg>`;
+}
+
+function drawSwatches() {
+  $('#sw-city').innerHTML = swatch('city');
+  $('#sw-moj').innerHTML = swatch('moj');
+}
+
+// ---------------------------------------------------------------- controls
+
+function bindPanel() {
+  $('#edition').textContent = `地番図（市）${APP.data.city.edition}／法務局地図 ${APP.data.moj.edition}`;
+  for (const r of document.querySelectorAll('input[name=bg]')) {
+    r.checked = r.value === state.bg;
+    r.addEventListener('change', () => { state.bg = r.value; applyBackground(); writeHash(); });
+  }
+  for (const key of ['city', 'moj', 'label', 'mask']) {
+    const el = $(`#lyr-${key}`);
+    el.checked = state[key];
+    el.addEventListener('change', () => { state[key] = el.checked; applyLayers(); writeHash(); });
+  }
+  const sliders = [
+    ['op-city', 'opCity', v => `${v}%`, applyOpacity],
+    ['op-moj', 'opMoj', v => `${v}%`, applyOpacity],
+    ['photo-bright', 'bright', v => (v > 0 ? `+${v}` : `${v}`), applyPhoto],
+    ['photo-contrast', 'contrast', v => (v > 0 ? `+${v}` : `${v}`), applyPhoto],
+  ];
+  for (const [id, key, fmt, apply] of sliders) {
+    const el = $(`#${id}`);
+    const out = $(`#${id}-out`);
+    el.value = state[key];
+    out.textContent = fmt(state[key]);
+    el.addEventListener('input', () => {
+      state[key] = Number(el.value);
+      out.textContent = fmt(state[key]);
+      apply();
+    });
+  }
+
+  const panel = $('#panel');
+  const opener = $('#panel-open');
+  opener.addEventListener('click', () => {
+    closeInfo();
+    panel.classList.add('open');
+    opener.setAttribute('aria-expanded', 'true');
+    $('#panel-close').focus();
+  });
+  $('#panel-close').addEventListener('click', () => closePanel(true));
+  document.addEventListener('keydown', e => {
+    if (e.key !== 'Escape') return;
+    if (panel.classList.contains('open')) closePanel(true);
+    else if (selection.city !== null || selection.moj !== null) clearSelection();
+  });
+  $('#zoom-hint-btn').addEventListener('click', () => map.easeTo({ zoom: 15 }));
+}
+
+function closePanel(restoreFocus) {
+  const panel = $('#panel');
+  if (!panel.classList.contains('open')) return;
+  panel.classList.remove('open');
+  $('#panel-open').setAttribute('aria-expanded', 'false');
+  if (restoreFocus) $('#panel-open').focus();
+}
+
+function updateZoomHint() {
+  const z = map.getZoom();
+  const hint = $('#zoom-hint');
+  const on = z < 15 && (state.city || state.moj);
+  hint.classList.toggle('show', on);
+  if (on) $('#zoom-hint-text').textContent = `地番はズーム 15 以上で表示します（現在 ${z.toFixed(1)}）`;
+}
+
+let toastTimer = 0;
+function toast(msg) {
+  const el = $('#toast');
+  el.textContent = msg;
+  el.classList.add('show');
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => el.classList.remove('show'), 3500);
+}
+
+// ---------------------------------------------------------------- attribution (F5)
+
+function renderAttribution() {
+  const d = APP.data;
+  const z = map.getZoom();
+  const link = (url, text) => `<a href="${url}" target="_blank" rel="noopener noreferrer">${text}</a>`;
+  const bgName = BACKGROUNDS[state.bg].label;
+  let bgLine = `背景：${link(GSI_LIST, '国土地理院')}（地理院タイル：${bgName}）`;
+  if (state.bg === 'photo' && z < 14) {
+    bgLine += '。データソース：Landsat8画像（GSI,TSIC,GEO Grid/AIST）, Landsat8画像（courtesy of the U.S. Geological Survey）, 海底地形（GEBCO）';
+  }
+  const items = [bgLine];
+  items.push(`地番図（市）：${link(d.city.url, `「${d.city.name}」（${d.city.publisher}）`)}を加工して作成`);
+  items.push(`法務局地図：${link(d.moj.url, `「${d.moj.name}」（${d.moj.publisher}）`)}（${d.moj.accessed}に利用）を加工して作成`);
+  items.push(`地番検索：${link(d.search.url, `「${d.search.name}」（${d.search.publisher}）`)}と地番図（市）を加工して作成`);
+  items.push(`市域マスク：${link(d.mask.url, `『${d.mask.name}』（CODH作成）`)}「令和2年国勢調査町丁・字等別境界データ」（e-Stat）、${link(d.mask.adminUrl, `「${d.mask.admin}」（国土交通省）`)}を加工して作成（CC BY 4.0）`);
+  const notes = [
+    'この地図の地番や線は、境界の位置や面積を示すものではありません。境界確定、距離・面積の算定、権利関係の確認には使用できません。',
+    '地番図（市）は固定資産税の評価に用いる図、法務局地図は登記所に備え付けられた図を加工したもので、両者は一致しません。',
+    'データは更新時点で古くなることがあります。正確な情報は、福山市資産税課、法務局、または土地家屋調査士にご確認ください。',
+    'この地図の利用により生じた損害について、制作者は責任を負いません。',
+  ];
+  $('#attr-full').innerHTML =
+    `<div class="block"><p>出典（加工・作成：${esc(APP.author)}）</p><ul>${items.map(i => `<li>${i}</li>`).join('')}</ul></div>` +
+    `<div class="block"><p class="warn">注意</p><ul>${notes.map(n => `<li>${n}</li>`).join('')}</ul></div>` +
+    `<div class="block"><p>地図ライブラリ：${link('https://maplibre.org/', 'MapLibre GL JS')}／${link('https://github.com/protomaps/PMTiles', 'PMTiles')}／フォント：Noto Sans（OFL）。` +
+    `版 ${APP.version}（${APP.updated} 更新）。地番図（市）${d.city.edition}・法務局地図 ${d.moj.edition}。</p></div>`;
+  $('#attr-summary').innerHTML =
+    `出典：国土地理院・福山市・法務省ほか／<span class="warn">境界確定・面積算定には使えません</span>`;
+  updateAttrHeight();
+}
+
+function bindAttribution() {
+  const box = $('#attribution');
+  const btn = $('#attr-toggle');
+  btn.addEventListener('click', () => {
+    const open = !box.classList.contains('expanded');
+    box.classList.toggle('expanded', open);
+    btn.setAttribute('aria-expanded', String(open));
+    btn.textContent = open ? 'たたむ' : '詳細';
+    updateAttrHeight();
+  });
+  new ResizeObserver(updateAttrHeight).observe(box);
+  window.addEventListener('resize', updateAttrHeight);
+}
+
+function updateAttrHeight() {
+  const h = isMobile() ? $('#attribution').offsetHeight : 0;
+  document.documentElement.style.setProperty('--attr-h', `${h}px`);
+}
+
+// ---------------------------------------------------------------- selection (F4)
+
+let popup = null;
+let closingPopup = false;
+
+function applySelection() {
+  for (const key of ['city', 'moj']) {
+    const id = selection[key] ?? -1;
+    const f = ['all', ['==', ['geometry-type'], 'Polygon'], ['==', ['id'], id]];
+    for (const l of layerIds.sel[key]) map.setFilter(l, f);
+    for (const l of layerIds.selLine[key]) map.setFilter(l, f);
+  }
+}
+
+function pickAt(point, prefer) {
+  const box = typeof point.x === 'number' ? point : map.project(point);
+  const feats = map.queryRenderedFeatures(box, { layers: layerIds.hit.filter(id => map.getLayer(id) && map.getLayoutProperty(id, 'visibility') !== 'none') });
+  const found = { city: null, moj: null };
+  for (const f of feats) {
+    const key = f.layer.id.startsWith('city') ? 'city' : 'moj';
+    if (found[key] && !(prefer && f.properties.chiban === prefer && found[key].properties.chiban !== prefer)) continue;
+    found[key] = f;
+  }
+  return found;
+}
+
+function select(found, lngLat) {
+  selection.city = found.city ? found.city.id : null;
+  selection.moj = found.moj ? found.moj.id : null;
+  selection.lngLat = lngLat;
+  applySelection();
+  showInfo(found, lngLat);
+}
+
+function clearSelection() {
+  selection.city = selection.moj = selection.lngLat = null;
+  applySelection();
+  closeInfo();
+  if (search.marker) { search.marker.remove(); search.marker = null; }
+}
+
+function esc(s) {
+  return String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+}
+
+function infoNode(found) {
+  const d = APP.data;
+  let html = '<h2>選択した筆</h2>';
+  if (found.city) {
+    const p = found.city.properties;
+    html += `<section><h3>${swatch('city')}${d.city.title}</h3><dl>` +
+      `<dt>地番</dt><dd class="chiban">${esc(p.chiban || '（なし）')}</dd>` +
+      `<dt>所在</dt><dd>福山市${esc(p.shozai)}</dd>` +
+      `<dt>出典</dt><dd>${esc(d.city.name)}（${esc(d.city.publisher)}）${esc(d.city.edition)}</dd></dl></section>`;
+  }
+  if (found.moj) {
+    const p = found.moj.properties;
+    const shozai = [p.oaza, p.chome, p.koaza].filter(Boolean).join('');
+    html += `<section><h3>${swatch('moj')}${d.moj.title}</h3><dl>` +
+      `<dt>地番</dt><dd class="chiban">${esc(p.chiban || '（なし）')}</dd>` +
+      `<dt>所在</dt><dd>福山市${esc(shozai)}</dd>` +
+      (p.zumei ? `<dt>地図名</dt><dd>${esc(p.zumei)}</dd>` : '') +
+      `<dt>出典</dt><dd>${esc(d.moj.name)}（${esc(d.moj.publisher)}）${esc(d.moj.edition)}</dd></dl></section>`;
+  }
+  html += '<p class="caution">境界確定・面積算定・権利確認には使えません。</p>';
+  const div = document.createElement('div');
+  div.className = 'info';
+  div.innerHTML = html;
+  return div;
+}
+
+function showInfo(found, lngLat) {
+  closeInfo();
+  const node = infoNode(found);
+  if (isMobile()) {
+    closePanel(false);
+    const sheet = $('#info-sheet');
+    sheet.querySelector('.body').replaceChildren(node);
+    sheet.classList.add('open');
+    const y = map.project(lngLat).y;
+    const limit = sheet.getBoundingClientRect().top - 48;
+    if (y > limit) map.panBy([0, y - limit * 0.6], { duration: 250 });
+  } else {
+    popup = new maplibregl.Popup({ maxWidth: '320px', focusAfterOpen: false, closeOnClick: false })
+      .setLngLat(lngLat)
+      .setDOMContent(node)
+      .addTo(map);
+    popup.on('close', () => {
+      if (closingPopup) return;
+      popup = null;
+      clearSelection();
+    });
+    keepPopupClear();
+  }
+}
+
+function keepPopupClear() {
+  // The panel and the attribution box float over the map, so MapLibre's
+  // own popup placement can tuck the popup underneath them.
+  const pr = popup.getElement().getBoundingClientRect();
+  const pa = $('#panel').getBoundingClientRect();
+  const at = $('#attribution').getBoundingClientRect();
+  let dx = 0;
+  let dy = 0;
+  if (pr.left < pa.right + 8 && pr.top < pa.bottom) dx = pa.right + 8 - pr.left;
+  if (pr.right + dx > at.left - 8 && pr.bottom > at.top - 8) dy = pr.bottom - at.top + 8;
+  if (pr.top - dy < 8) dy = Math.max(0, pr.top - 8);
+  if (dx || dy) map.panBy([-dx, dy], { duration: 250 });
+}
+
+function closeInfo() {
+  if (popup) {
+    closingPopup = true;
+    popup.remove();
+    popup = null;
+    closingPopup = false;
+  }
+  $('#info-sheet').classList.remove('open');
+}
+
+function bindSelection() {
+  $('#info-sheet .close').addEventListener('click', clearSelection);
+  map.on('click', e => {
+    if (map.getZoom() < 16) {
+      if ((state.city || state.moj) && map.getZoom() >= 15) toast('筆はズーム 16 以上で選択できます。');
+      return;
+    }
+    const found = pickAt(e.point);
+    if (!found.city && !found.moj) {
+      clearSelection();
+      return;
+    }
+    const same = (found.city ? found.city.id : null) === selection.city && (found.moj ? found.moj.id : null) === selection.moj;
+    if (same) clearSelection();
+    else select(found, e.lngLat);
+  });
+  const hits = () => layerIds.hit;
+  map.on('mousemove', e => {
+    if (map.getZoom() < 16) { map.getCanvas().style.cursor = ''; return; }
+    const n = map.queryRenderedFeatures(e.point, { layers: hits().filter(id => map.getLayoutProperty(id, 'visibility') !== 'none') }).length;
+    map.getCanvas().style.cursor = n ? 'pointer' : '';
+  });
+}
+
+// ---------------------------------------------------------------- search (F7)
+
+const search = { index: null, loading: null, lots: new Map(), marker: null };
+
+function norm(s) {
+  return String(s || '')
+    .normalize('NFKC')
+    .replace(/\s+/g, '')
+    .replace(/^(広島県)?(福山市)?/, '')
+    .replace(/[‐‑‒–—―−ー－]/g, '-')
+    .replace(/(\d)の(?=\d)/g, '$1-')
+    .replace(/番地?$/, '');
+}
+const bare = s => s.replace(/大字|字/g, '');
+
+function loadIndex() {
+  if (!search.loading) {
+    search.loading = fetch(BASE + 'search.json')
+      .then(r => { if (!r.ok) throw new Error(r.status); return r.json(); })
+      .then(idx => { search.index = idx.map(t => ({ ...t, b0: bare(t.k) })); return search.index; });
+  }
+  return search.loading;
+}
+
+function loadLots(town) {
+  if (!search.lots.has(town.f)) {
+    search.lots.set(town.f, fetch(`${BASE}search/${town.f}.json`).then(r => { if (!r.ok) throw new Error(r.status); return r.json(); }));
+  }
+  return search.lots.get(town.f);
+}
+
+function parseQuery(q) {
+  const n = norm(q);
+  const m = n.match(/^(.*?)((?:[甲乙丙丁戊己庚辛壬癸イロハニホヘトチリヌルヲワ])?\d[\d-]*)$/);
+  if (m && m[1]) return { town: m[1], chiban: m[2].replace(/-+$/, '') };
+  if (m) return { town: '', chiban: m[2] };
+  return { town: n, chiban: '' };
+}
+
+function matchTowns(townQ) {
+  const q = bare(townQ);
+  if (!q) return [];
+  const scored = [];
+  for (const t of search.index) {
+    let s = -1;
+    if (t.k === townQ || t.b0 === q) s = 0;
+    else if (t.b0.startsWith(q)) s = 1;
+    else if (t.b0.includes(q)) s = 2;
+    if (s >= 0) scored.push([s, t.n.length, t]);
+  }
+  scored.sort((a, b) => a[0] - b[0] || a[1] - b[1]);
+  return scored.map(x => x[2]);
+}
+
+function setStatus(msg) { $('#search-status').textContent = msg; }
+
+function renderResults(items) {
+  const ul = $('#results');
+  ul.replaceChildren();
+  for (const it of items) {
+    const li = document.createElement('li');
+    const b = document.createElement('button');
+    b.type = 'button';
+    b.innerHTML = `<span>${esc(it.label)}</span><span class="sub">${esc(it.sub || '')}</span>`;
+    b.addEventListener('click', it.action);
+    li.append(b);
+    ul.append(li);
+  }
+}
+
+async function runSearch() {
+  const raw = $('#q').value;
+  const { town, chiban } = parseQuery(raw);
+  renderResults([]);
+  if (!town && !chiban) { setStatus('大字・町名と地番を入力してください。'); return; }
+  setStatus('検索しています…');
+  try { await loadIndex(); } catch { setStatus('検索データを読み込めませんでした。'); return; }
+  if (!town) { setStatus('大字・町名も入力してください（例：青葉台一丁目 4-1）。'); return; }
+  const towns = matchTowns(town);
+  if (!towns.length) { setStatus(`「${town}」に一致する大字・町名がありません。`); return; }
+  const exact = towns.filter(t => t.b0 === bare(town));
+  if (!chiban) {
+    setStatus(`${towns.length} 件の大字・町名が見つかりました。`);
+    renderResults(towns.slice(0, 12).map(t => ({ label: t.n, sub: `${t.c.toLocaleString()} 筆`, action: () => goTown(t) })));
+    return;
+  }
+  if (exact.length === 1 || towns.length === 1) {
+    await searchLot(exact[0] || towns[0], chiban);
+    return;
+  }
+  setStatus('大字・町名を選んでください。');
+  renderResults(towns.slice(0, 12).map(t => ({ label: `${t.n} ${chiban}`, sub: '', action: () => searchLot(t, chiban) })));
+}
+
+async function searchLot(town, chiban) {
+  setStatus('検索しています…');
+  let rows;
+  try { rows = await loadLots(town); } catch { setStatus('検索データを読み込めませんでした。'); return; }
+  const hit = rows.find(r => norm(r[0]) === chiban);
+  if (hit) {
+    setStatus(`${town.n} ${hit[0]} に移動します。`);
+    renderResults([]);
+    goLot(town, hit);
+    return;
+  }
+  const near = rows.filter(r => norm(r[0]).startsWith(chiban + '-') || norm(r[0]).split('-')[0] === chiban.split('-')[0]).slice(0, 12);
+  if (!near.length) { setStatus(`${town.n} に地番「${chiban}」は見つかりませんでした。`); return; }
+  setStatus(`${town.n} に「${chiban}」はありません。近い地番：`);
+  renderResults(near.map(r => ({ label: `${town.n} ${r[0]}`, sub: '', action: () => goLot(town, r) })));
+}
+
+function goTown(t) {
+  closePanel(false);
+  map.fitBounds([[t.b[0], t.b[1]], [t.b[2], t.b[3]]], { padding: 40, maxZoom: 17 });
+}
+
+function goLot(town, row) {
+  const lngLat = [row[1] / 1e6, row[2] / 1e6];
+  closePanel(false);
+  if (search.marker) search.marker.remove();
+  search.marker = new maplibregl.Marker({ color: '#FF6F00' }).setLngLat(lngLat).addTo(map);
+  if (!state.city && !state.moj) { state.city = true; $('#lyr-city').checked = true; applyLayers(); writeHash(); }
+  map.flyTo({ center: lngLat, zoom: Math.max(map.getZoom(), 18), essential: true });
+  map.once('idle', () => {
+    const pt = map.project(lngLat);
+    let found = pickAt(pt, row[0]);
+    if (!found.city && !found.moj) {
+      const r = 20;
+      found = pickAt([[pt.x - r, pt.y - r], [pt.x + r, pt.y + r]], row[0]);
+    }
+    if (found.city || found.moj) select(found, lngLat);
+    else toast('この位置に筆の区画が見つかりませんでした（位置は目安です）。');
+  });
+}
+
+function bindSearch() {
+  const form = $('#search-form');
+  const q = $('#q');
+  q.addEventListener('focus', () => loadIndex().catch(() => {}), { once: true });
+  form.addEventListener('submit', e => { e.preventDefault(); runSearch(); });
+  q.addEventListener('input', () => { if (!q.value) { renderResults([]); setStatus(''); } });
+}
+
+// ---------------------------------------------------------------- start
+
+bindPanel();
+bindAttribution();
+bindSelection();
+bindSearch();
+drawSwatches();
+
+renderAttribution();
+// 'load' waits for every initial tile; the style is all these need.
+map.once('style.load', () => {
+  applyBackground();
+  applyPhoto();
+  applyLayers();
+  updateZoomHint();
+  writeHash();
+});
+map.on('moveend', writeHash);
+map.on('zoomend', () => { updateZoomHint(); renderAttribution(); });
+window.addEventListener('hashchange', () => {
+  const v = parseHash();
+  if (v.bg && v.bg !== state.bg) { state.bg = v.bg; document.getElementById(`bg-${v.bg}`).checked = true; applyBackground(); }
+  if (v.layers) {
+    Object.assign(state, v.layers);
+    for (const k of ['city', 'moj', 'label', 'mask']) $(`#lyr-${k}`).checked = state[k];
+    applyLayers();
+  }
+  if (v.center) map.jumpTo({ center: v.center, zoom: v.zoom });
+});
+window.matchMedia('(max-width: 767.98px)').addEventListener('change', () => { closeInfo(); updateAttrHeight(); });
+</script>
+</body>
+</html>
