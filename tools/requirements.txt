@@ -1,0 +1,5 @@
+pyogrio
+shapely>=2.0
+pyproj
+mojxml
+mapbox-vector-tile
