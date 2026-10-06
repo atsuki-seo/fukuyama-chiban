@@ -65,6 +65,7 @@ button { cursor: pointer; }
 .swatch { flex: none; width: 34px; height: 12px; border-radius: 2px; background: #6b6b6b; display: inline-flex; align-items: center; }
 .swatch svg { display: block; }
 .note { font-size: 12px; color: var(--fg-sub); margin: 2px 0 6px 28px; }
+.opt.note { min-height: 20px; margin-top: 0; margin-bottom: 0; }
 .slider { display: grid; grid-template-columns: 1fr auto; align-items: center; column-gap: 8px; margin: 2px 0 6px 28px; }
 .slider label { font-size: 13px; }
 .slider output { font-size: 12px; color: var(--fg-sub); min-width: 3.5em; text-align: right; font-variant-numeric: tabular-nums; }
@@ -110,6 +111,9 @@ button { cursor: pointer; }
 .info dd { margin: 0; overflow-wrap: anywhere; }
 .info dd.chiban { font-size: 16px; font-weight: 700; }
 .info .caution { font-size: 12px; color: var(--fg-sub); margin: 10px 0 0; }
+.info dd.road p { margin: 0; }
+.info dd.road p + p { margin-top: 2px; }
+.info dd.road .sub { color: var(--fg-sub); font-size: 12px; }
 .maplibregl-popup-content { padding: 12px 14px; border-radius: var(--radius); box-shadow: var(--shadow); font-size: 14px; }
 .maplibregl-popup-close-button { width: 36px; height: 36px; font-size: 22px; color: var(--fg); border-radius: 0 var(--radius) 0 0; }
 #info-sheet { display: none; }
@@ -261,6 +265,25 @@ button { cursor: pointer; }
     <p class="note" style="margin-left:0">地番図（市）と法務局地図は作成方法が異なり、線の位置や区画は一致しません。</p>
   </fieldset>
 
+  <fieldset>
+    <legend>道路</legend>
+    <div class="opt">
+      <input type="checkbox" id="lyr-road">
+      <label for="lyr-road">国道・県道を色分けする</label>
+    </div>
+    <div class="opt note"><span class="swatch" id="sw-national" aria-hidden="true"></span>国道（高速道路を含む）</div>
+    <div class="opt note"><span class="swatch" id="sw-pref" aria-hidden="true"></span>県道</div>
+    <div class="slider">
+      <label for="w-road">線の太さ</label><output for="w-road" id="w-road-out"></output>
+      <input type="range" id="w-road" min="50" max="300" step="25">
+    </div>
+    <div class="slider">
+      <label for="op-road">線の不透明度</label><output for="op-road" id="op-road-out"></output>
+      <input type="range" id="op-road" min="20" max="100" step="5">
+    </div>
+    <p class="note">国土地理院の地図データの道路中心線です。ズーム 16 以上では道路縁（全種別、細線）も重ねます。道路区域（法的な道路の範囲）ではありません。筆を選択すると、近くの国道・県道との位置関係も表示します。</p>
+  </fieldset>
+
   <fieldset id="photo-adjust">
     <legend>空中写真の調整</legend>
     <div class="slider" style="margin-left:0">
@@ -325,6 +348,12 @@ const APP = {
       publisher: 'デジタル庁',
       url: 'https://dataset.address-br.digital.go.jp/dataset/ba-o1-342076_g2-000011',
     },
+    road: {
+      name: '最適化ベクトルタイル',
+      publisher: '国土地理院',
+      url: 'https://github.com/gsi-cyberjapan/optimal_bvmap',
+      file: 'https://cyberjapandata.gsi.go.jp/xyz/optimal_bvmap-v1/optimal_bvmap-v1.pmtiles',
+    },
     mask: {
       name: '国勢調査町丁・字等別境界データセット',
       url: 'https://geoshape.ex.nii.ac.jp/ka/resource/34207.html',
@@ -341,10 +370,16 @@ const BACKGROUNDS = {
   pale: { label: '淡色地図', tiles: 'https://cyberjapandata.gsi.go.jp/xyz/pale/{z}/{x}/{y}.png' },
 };
 const PALETTE = {
-  photo: { city: '#FFD400', moj: '#00E5FF', text: '#FFFFFF', halo: 'rgba(0,0,0,0.85)', mojText: '#B9F6FF' },
-  map: { city: '#C62828', moj: '#1565C0', text: '#1B1B1B', halo: 'rgba(255,255,255,0.95)', mojText: '#0D3C78' },
+  photo: { city: '#FFD400', moj: '#00E5FF', text: '#FFFFFF', halo: 'rgba(0,0,0,0.85)', mojText: '#B9F6FF', national: '#FF40FF', pref: '#76FF03', edge: '#FFFFFF' },
+  map: { city: '#C62828', moj: '#1565C0', text: '#1B1B1B', halo: 'rgba(255,255,255,0.95)', mojText: '#0D3C78', national: '#8E24AA', pref: '#2E7D32', edge: '#424242' },
 };
 const MOJ_DASH = [5, 3]; // px; line-dasharray is in line-width units
+
+const ROAD_KEYS = ['pref', 'national'];
+// GSI vt_rdctg value -> road key
+const ROAD_KIND = { 国道: 'national', 高速自動車国道等: 'national', 都道府県道: 'pref' };
+const ROAD_LABEL = { national: '国道', pref: '県道' };
+const LAYER_KEYS = ['city', 'moj', 'label', 'mask', 'road'];
 
 const isMobile = () => window.matchMedia('(max-width: 767.98px)').matches;
 const $ = sel => document.querySelector(sel);
@@ -356,12 +391,15 @@ const state = {
   moj: true,
   label: true,
   mask: true,
+  road: false,
   opCity: 90,
   opMoj: 90,
+  wRoad: 100,
+  opRoad: 60,
   bright: 0,
   contrast: 0,
 };
-const selection = { city: null, moj: null, lngLat: null };
+const selection = { city: null, moj: null, lngLat: null, found: null };
 
 // ---------------------------------------------------------------- hash (F9)
 
@@ -380,7 +418,7 @@ function parseHash() {
   if (out.bg in BACKGROUNDS) view.bg = out.bg;
   if (typeof out.layers === 'string') {
     const on = new Set(out.layers.split(',').filter(Boolean));
-    view.layers = { city: on.has('city'), moj: on.has('moj'), label: on.has('label'), mask: on.has('mask') };
+    view.layers = { city: on.has('city'), moj: on.has('moj'), label: on.has('label'), mask: on.has('mask'), road: on.has('road') };
   }
   return view;
 }
@@ -390,7 +428,7 @@ function writeHash() {
   clearTimeout(hashTimer);
   hashTimer = setTimeout(() => {
     const c = map.getCenter();
-    const layers = ['city', 'moj', 'label', 'mask'].filter(k => state[k]).join(',');
+    const layers = LAYER_KEYS.filter(k => state[k]).join(',');
     const h = `#map=${map.getZoom().toFixed(2)}/${c.lat.toFixed(5)}/${c.lng.toFixed(5)}&bg=${state.bg}&layers=${layers}`;
     if (h !== location.hash) history.replaceState(null, '', h);
   }, 250);
@@ -405,11 +443,21 @@ if (initial.layers) Object.assign(state, initial.layers);
 const protocol = new pmtiles.Protocol();
 maplibregl.addProtocol('pmtiles', protocol.tile);
 
+// GSI vector z16 tiles carry z17 features too; vt_flag17 = 2 marks the
+// z17-only copies, so drop them to avoid drawing roads twice.
+function roadFilter(ctg) {
+  return ['all', ['in', ['get', 'vt_rdctg'], ['literal', ctg]], ['!=', ['get', 'vt_flag17'], 2]];
+}
+
 function widthExpr() {
   return ['interpolate', ['linear'], ['zoom'], 15, 0.6, 18, 1.6];
 }
 function widthAt(z) {
   return 0.6 + (Math.min(Math.max(z, 15), 18) - 15) * (1.0 / 3);
+}
+function roadWidthExpr() {
+  const k = state.wRoad / 100;
+  return ['interpolate', ['linear'], ['zoom'], 11, 2 * k, 15, 4 * k, 18, 8 * k];
 }
 function dashExpr() {
   // Keep the dash at 5px/3px on screen while the line width changes.
@@ -453,6 +501,29 @@ function buildStyle() {
   }
   const polygon = ['==', ['geometry-type'], 'Polygon'];
   const each = (key, fn) => DATASETS[key].files.forEach((_, k) => fn(`${key}-${k}`, k));
+
+  // 1: roads under the lot lines
+  sources.road = { type: 'vector', url: `pmtiles://${APP.data.road.file}` };
+  const roadPal = PALETTE[state.bg === 'photo' ? 'photo' : 'map'];
+  const roadVis = { visibility: state.road ? 'visible' : 'none' };
+  layers.push({
+    id: 'road-edge', type: 'line', source: 'road', 'source-layer': 'RdEdg', minzoom: 16,
+    layout: roadVis,
+    paint: { 'line-color': roadPal.edge, 'line-width': 1, 'line-opacity': 0.7 },
+  });
+  for (const key of ROAD_KEYS) {
+    const ctg = Object.keys(ROAD_KIND).filter(c => ROAD_KIND[c] === key);
+    layers.push({
+      id: `road-${key}`, type: 'line', source: 'road', 'source-layer': 'RdCL', minzoom: 11,
+      filter: roadFilter(ctg),
+      layout: { ...roadVis, 'line-join': 'round', 'line-cap': 'round' },
+      paint: {
+        'line-color': roadPal[key],
+        'line-width': roadWidthExpr(),
+        'line-opacity': state.opRoad / 100,
+      },
+    });
+  }
 
   // 2: click targets and selection
   for (const key of ['city', 'moj']) {
@@ -605,6 +676,8 @@ function applyBackground() {
       map.setPaintProperty(id, 'text-halo-color', pal.halo);
     }
   }
+  map.setPaintProperty('road-edge', 'line-color', pal.edge);
+  for (const key of ROAD_KEYS) map.setPaintProperty(`road-${key}`, 'line-color', pal[key]);
   drawSwatches();
   const photo = state.bg === 'photo';
   $('#photo-adjust').classList.toggle('disabled', !photo);
@@ -631,10 +704,19 @@ function applyLayers() {
   setVis(layerIds.label.city, state.city && state.label);
   setVis(layerIds.label.moj, state.moj && state.label);
   map.setLayoutProperty('mask', 'visibility', state.mask ? 'visible' : 'none');
+  setVis(['road-edge', ...ROAD_KEYS.map(k => `road-${k}`)], state.road);
   if (selection.city !== null && !state.city) selection.city = null;
   if (selection.moj !== null && !state.moj) selection.moj = null;
   applySelection();
   renderAttribution();
+}
+
+function applyRoadStyle() {
+  for (const key of ROAD_KEYS) {
+    map.setPaintProperty(`road-${key}`, 'line-width', roadWidthExpr());
+    map.setPaintProperty(`road-${key}`, 'line-opacity', state.opRoad / 100);
+  }
+  drawSwatches();
 }
 
 function applyOpacity() {
@@ -646,12 +728,14 @@ function swatch(key) {
   const pal = PALETTE[state.bg === 'photo' ? 'photo' : 'map'];
   const bg = state.bg === 'photo' ? '#5d5d5d' : '#f4f1ea';
   return `<svg width="34" height="12" viewBox="0 0 34 12" aria-hidden="true"><rect width="34" height="12" rx="2" fill="${bg}"/>` +
-    `<line x1="2" y1="6" x2="32" y2="6" stroke="${pal[key]}" stroke-width="2.5"${key === 'moj' ? ' stroke-dasharray="5 3"' : ''}/></svg>`;
+    `<line x1="2" y1="6" x2="32" y2="6" stroke="${pal[key]}" stroke-width="${ROAD_KEYS.includes(key) ? 5 : 2.5}"` +
+    `${ROAD_KEYS.includes(key) ? ` stroke-opacity="${state.opRoad / 100}"` : ''}${key === 'moj' ? ' stroke-dasharray="5 3"' : ''}/></svg>`;
 }
 
 function drawSwatches() {
   $('#sw-city').innerHTML = swatch('city');
   $('#sw-moj').innerHTML = swatch('moj');
+  for (const key of ROAD_KEYS) $(`#sw-${key}`).innerHTML = swatch(key);
 }
 
 // ---------------------------------------------------------------- controls
@@ -662,14 +746,23 @@ function bindPanel() {
     r.checked = r.value === state.bg;
     r.addEventListener('change', () => { state.bg = r.value; applyBackground(); writeHash(); });
   }
-  for (const key of ['city', 'moj', 'label', 'mask']) {
+  for (const key of LAYER_KEYS) {
     const el = $(`#lyr-${key}`);
     el.checked = state[key];
-    el.addEventListener('change', () => { state[key] = el.checked; applyLayers(); writeHash(); });
+    el.addEventListener('change', () => {
+      state[key] = el.checked;
+      applyLayers();
+      writeHash();
+      // Road tiles load only while the layer is shown.
+      if (key === 'road' && state.road) map.once('idle', refreshInfo);
+      else if (key === 'road') refreshInfo();
+    });
   }
   const sliders = [
     ['op-city', 'opCity', v => `${v}%`, applyOpacity],
     ['op-moj', 'opMoj', v => `${v}%`, applyOpacity],
+    ['w-road', 'wRoad', v => `${v}%`, applyRoadStyle],
+    ['op-road', 'opRoad', v => `${v}%`, applyRoadStyle],
     ['photo-bright', 'bright', v => (v > 0 ? `+${v}` : `${v}`), applyPhoto],
     ['photo-contrast', 'contrast', v => (v > 0 ? `+${v}` : `${v}`), applyPhoto],
   ];
@@ -741,6 +834,9 @@ function renderAttribution() {
   const items = [bgLine];
   items.push(`地番図（市）：${link(d.city.url, `「${d.city.name}」（${d.city.publisher}）`)}を加工して作成`);
   items.push(`法務局地図：${link(d.moj.url, `「${d.moj.name}」（${d.moj.publisher}）`)}（${d.moj.accessed}に利用）を加工して作成`);
+  if (state.road) {
+    items.push(`道路：${link(d.road.url, `「${d.road.name}」（${d.road.publisher}）`)}の道路中心線・道路縁を加工して作成。道路の種別と位置は地図表示用で、道路区域を示すものではありません`);
+  }
   items.push(`地番検索：${link(d.search.url, `「${d.search.name}」（${d.search.publisher}）`)}と地番図（市）を加工して作成`);
   items.push(`市域マスク：${link(d.mask.url, `『${d.mask.name}』（CODH作成）`)}「令和2年国勢調査町丁・字等別境界データ」（e-Stat）、${link(d.mask.adminUrl, `「${d.mask.admin}」（国土交通省）`)}を加工して作成（CC BY 4.0）`);
   const notes = [
@@ -808,12 +904,13 @@ function select(found, lngLat) {
   selection.city = found.city ? found.city.id : null;
   selection.moj = found.moj ? found.moj.id : null;
   selection.lngLat = lngLat;
+  selection.found = found;
   applySelection();
   showInfo(found, lngLat);
 }
 
 function clearSelection() {
-  selection.city = selection.moj = selection.lngLat = null;
+  selection.city = selection.moj = selection.lngLat = selection.found = null;
   applySelection();
   closeInfo();
   if (search.marker) { search.marker.remove(); search.marker = null; }
@@ -831,6 +928,7 @@ function infoNode(found) {
     html += `<section><h3>${swatch('city')}${d.city.title}</h3><dl>` +
       `<dt>地番</dt><dd class="chiban">${esc(p.chiban || '（なし）')}</dd>` +
       `<dt>所在</dt><dd>福山市${esc(p.shozai)}</dd>` +
+      roadRow(found.city) +
       `<dt>出典</dt><dd>${esc(d.city.name)}（${esc(d.city.publisher)}）${esc(d.city.edition)}</dd></dl></section>`;
   }
   if (found.moj) {
@@ -840,7 +938,11 @@ function infoNode(found) {
       `<dt>地番</dt><dd class="chiban">${esc(p.chiban || '（なし）')}</dd>` +
       `<dt>所在</dt><dd>福山市${esc(shozai)}</dd>` +
       (p.zumei ? `<dt>地図名</dt><dd>${esc(p.zumei)}</dd>` : '') +
+      roadRow(found.moj) +
       `<dt>出典</dt><dd>${esc(d.moj.name)}（${esc(d.moj.publisher)}）${esc(d.moj.edition)}</dd></dl></section>`;
+  }
+  if (state.road) {
+    html += '<p class="caution">国道・県道は、地図の道路中心線との位置関係から見た目安です。道路区域とは異なり、画面外の部分は判定に含みません。</p>';
   }
   html += '<p class="caution">境界確定・面積算定・権利確認には使えません。</p>';
   const div = document.createElement('div');
@@ -872,6 +974,19 @@ function showInfo(found, lngLat) {
     });
     keepPopupClear();
   }
+}
+
+// Rebuild the open info after the road layer was switched.
+function refreshInfo() {
+  if (!selection.found) return;
+  const found = {
+    city: selection.city !== null ? selection.found.city : null,
+    moj: selection.moj !== null ? selection.found.moj : null,
+  };
+  if (!found.city && !found.moj) return;
+  const node = infoNode(found);
+  if (popup) popup.setDOMContent(node);
+  else if ($('#info-sheet').classList.contains('open')) $('#info-sheet .body').replaceChildren(node);
 }
 
 function keepPopupClear() {
@@ -920,6 +1035,139 @@ function bindSelection() {
     const n = map.queryRenderedFeatures(e.point, { layers: hits().filter(id => map.getLayoutProperty(id, 'visibility') !== 'none') }).length;
     map.getCanvas().style.cursor = n ? 'pointer' : '';
   });
+}
+
+// ---------------------------------------------------------------- roads near a lot
+
+const ROAD_NEAR_M = 30;
+// Lower bound of each GSI width class (vt_rnkwidth), in metres.
+const ROAD_MIN_WIDTH = { '3m未満': 0, '3m-5.5m未満': 3, '5.5m-13m未満': 5.5, '13m-19.5m未満': 13, '19.5m以上': 19.5 };
+
+function polygonRings(g) {
+  if (g.type === 'Polygon') return g.coordinates;
+  if (g.type === 'MultiPolygon') return g.coordinates.flat();
+  return [];
+}
+
+function lineParts(g) {
+  if (g.type === 'LineString') return [g.coordinates];
+  if (g.type === 'MultiLineString') return g.coordinates;
+  return [];
+}
+
+function inRings(p, rings) {
+  let inside = false;
+  for (const r of rings) {
+    for (let i = 0, j = r.length - 1; i < r.length; j = i++) {
+      const [xi, yi] = r[i];
+      const [xj, yj] = r[j];
+      if ((yi > p[1]) !== (yj > p[1]) && p[0] < (xj - xi) * (p[1] - yi) / (yj - yi) + xi) inside = !inside;
+    }
+  }
+  return inside;
+}
+
+function cross(o, a, b) {
+  return (a[0] - o[0]) * (b[1] - o[1]) - (a[1] - o[1]) * (b[0] - o[0]);
+}
+
+function segsIntersect(a, b, c, d) {
+  const d1 = cross(c, d, a);
+  const d2 = cross(c, d, b);
+  const d3 = cross(a, b, c);
+  const d4 = cross(a, b, d);
+  return ((d1 > 0) !== (d2 > 0)) && ((d3 > 0) !== (d4 > 0));
+}
+
+function pointSegDist(p, a, b) {
+  const dx = b[0] - a[0];
+  const dy = b[1] - a[1];
+  const len = dx * dx + dy * dy;
+  const t = len ? Math.max(0, Math.min(1, ((p[0] - a[0]) * dx + (p[1] - a[1]) * dy) / len)) : 0;
+  return Math.hypot(p[0] - a[0] - t * dx, p[1] - a[1] - t * dy);
+}
+
+function segDist(a, b, c, d) {
+  if (segsIntersect(a, b, c, d)) return 0;
+  return Math.min(pointSegDist(a, c, d), pointSegDist(b, c, d), pointSegDist(c, a, b), pointSegDist(d, a, b));
+}
+
+// Distance from a lot to the nearest national / prefectural road centre line
+// in metres (0 = the line runs through the lot), per road key, within
+// ROAD_NEAR_M. Only tiles that are loaded count, so parts off screen are
+// left out.
+function roadsNearLot(f) {
+  // A lot comes in one piece per tile, each clipped to its tile; the union
+  // of the pieces is the loaded part of the lot.
+  const pieces = map.querySourceFeatures(f.source, {
+    sourceLayer: f.sourceLayer,
+    filter: ['all', ['==', ['geometry-type'], 'Polygon'], ['==', ['id'], f.id]],
+  }).map(p => polygonRings(p.geometry)).filter(r => r.length);
+  if (!pieces.length) pieces.push(polygonRings(f.geometry));
+
+  // Local metres around the lot are accurate enough at this scale.
+  const [lng0, lat0] = pieces[0][0][0];
+  const kx = 111320 * Math.cos(lat0 * Math.PI / 180);
+  const ky = 110574;
+  const xy = ([lng, lat]) => [(lng - lng0) * kx, (lat - lat0) * ky];
+  const lot = pieces.map(rings => rings.map(r => r.map(xy)));
+  let [minX, minY, maxX, maxY] = [Infinity, Infinity, -Infinity, -Infinity];
+  for (const rings of lot) for (const r of rings) for (const [x, y] of r) {
+    minX = Math.min(minX, x); minY = Math.min(minY, y); maxX = Math.max(maxX, x); maxY = Math.max(maxY, y);
+  }
+  const near = ROAD_NEAR_M;
+
+  const best = {};
+  const roads = map.querySourceFeatures('road', { sourceLayer: 'RdCL', filter: roadFilter(Object.keys(ROAD_KIND)) });
+  for (const r of roads) {
+    const key = ROAD_KIND[r.properties.vt_rdctg];
+    const width = r.properties.vt_rnkwidth;
+    for (const part of lineParts(r.geometry)) {
+      const pts = part.map(xy);
+      for (let i = 1; i < pts.length; i++) {
+        const a = pts[i - 1];
+        const b = pts[i];
+        if (Math.max(a[0], b[0]) < minX - near || Math.min(a[0], b[0]) > maxX + near ||
+          Math.max(a[1], b[1]) < minY - near || Math.min(a[1], b[1]) > maxY + near) continue;
+        let d = Infinity;
+        for (const rings of lot) {
+          if (inRings(a, rings) || inRings(b, rings)) { d = 0; break; }
+          for (const ring of rings) {
+            for (let j = 1; j < ring.length && d > 0; j++) d = Math.min(d, segDist(a, b, ring[j - 1], ring[j]));
+          }
+          if (d === 0) break;
+        }
+        if (d > near) continue;
+        const cur = best[key];
+        const wider = cur && (ROAD_MIN_WIDTH[width] ?? -1) > (ROAD_MIN_WIDTH[cur.width] ?? -1);
+        if (!cur || d < cur.d || (d === cur.d && wider)) best[key] = { d, width };
+      }
+    }
+  }
+  return best;
+}
+
+function roadRow(f) {
+  if (!state.road) {
+    return '<dt>国道・県道</dt><dd class="road"><p class="sub">「国道・県道を色分けする」をオンにすると表示します</p></dd>';
+  }
+  const best = roadsNearLot(f);
+  const lines = [];
+  for (const key of ['national', 'pref']) {
+    const r = best[key];
+    if (!r) continue;
+    const width = r.width in ROAD_MIN_WIDTH ? `（幅員 ${esc(r.width)}）` : '';
+    if (r.d === 0) {
+      lines.push(`<p><strong>${ROAD_LABEL[key]}</strong>の中心線が筆の中を通っています${width}</p>`);
+    } else {
+      const dist = r.d < 1 ? '1 m 未満' : `約 ${Math.round(r.d)} m`;
+      const half = (ROAD_MIN_WIDTH[r.width] ?? 0) / 2;
+      const over = r.d < half ? '。幅員から見て、道路にかかっている可能性があります' : '';
+      lines.push(`<p><strong>${ROAD_LABEL[key]}</strong>の中心線まで${dist}${width}${over}</p>`);
+    }
+  }
+  if (!lines.length) lines.push(`<p class="sub">${ROAD_NEAR_M} m 以内にありません</p>`);
+  return `<dt>国道・県道</dt><dd class="road">${lines.join('')}</dd>`;
 }
 
 // ---------------------------------------------------------------- search (F7)
@@ -1089,7 +1337,7 @@ window.addEventListener('hashchange', () => {
   if (v.bg && v.bg !== state.bg) { state.bg = v.bg; document.getElementById(`bg-${v.bg}`).checked = true; applyBackground(); }
   if (v.layers) {
     Object.assign(state, v.layers);
-    for (const k of ['city', 'moj', 'label', 'mask']) $(`#lyr-${k}`).checked = state[k];
+    for (const k of LAYER_KEYS) $(`#lyr-${k}`).checked = state[k];
     applyLayers();
   }
   if (v.center) map.jumpTo({ center: v.center, zoom: v.zoom });

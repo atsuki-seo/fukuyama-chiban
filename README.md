@@ -16,11 +16,19 @@ boundaries, measure distances or areas, or confirm rights.
   - 地番図（市） — Fukuyama City's tax-assessment lot map (solid line)
   - 法務局地図 — MOJ registry map, public-coordinate sheets only (dashed)
 - Lot labels from zoom 17
-- Click / tap a lot (zoom 16+) to see its lot number, location and source
+- Optional road layer: national and prefectural road centre lines in their own
+  colours (from zoom 11) and road edges (from zoom 16), from GSI optimised
+  vector tiles, with its own line width and opacity. It shows the mapped
+  roads, not the legal road area (道路区域)
+- Click / tap a lot (zoom 16+) to see its lot number, location and source.
+  With the road layer on, it also says whether a national / prefectural road
+  centre line runs through the lot, or how far the nearest one is (within
+  30 m, with GSI's width class). Only loaded tiles count, so parts of the lot
+  off screen are left out
 - Lot search by town + lot number (e.g. `青葉台一丁目 4-1`), entirely
   client-side
 - Current location (browser geolocation, never sent anywhere)
-- Shareable URL hash: `#map=<zoom>/<lat>/<lng>&bg=<photo|pale|std>&layers=city,moj,label,mask`
+- Shareable URL hash: `#map=<zoom>/<lat>/<lng>&bg=<photo|pale|std>&layers=city,moj,label,mask,road`
 - Mask that darkens everything outside the city
 - PC and smartphone layouts (< 768 px uses bottom sheets)
 
@@ -58,6 +66,7 @@ Check each provider's current terms before publishing an update.
 | Data | Provider / terms | Notes |
 | --- | --- | --- |
 | [地理院タイル](https://maps.gsi.go.jp/development/ichiran.html) (seamlessphoto, std, pale) | 国土地理院. Credit 「国土地理院」 and link to the tile list | z9–13 of seamlessphoto are Landsat mosaics with an extra credit; the page adds it below zoom 14. No prefetching (`prefetchZoomDelta: 0`) |
+| [最適化ベクトルタイル](https://github.com/gsi-cyberjapan/optimal_bvmap) (PMTiles edition) | 国土地理院. 国土地理院コンテンツ利用規約; credit e.g. 「国土地理院最適化ベクトルタイル」 | Test release; URL and attributes may change. Read directly from GSI with HTTP Range. Uses `RdCL` (`vt_rdctg` = 国道, 高速自動車国道等, 都道府県道) and `RdEdg`; `vt_flag17 = 2` features are skipped because z16 tiles also carry z17 copies |
 | [福山市地番図データ（2026年度）](https://data.city.fukuyama.hiroshima.jp/dataset/digital_numbers_map) | 福山市. 公共データ利用規約 第1.0版 (PDL1.0) | As of 2026-01-01. Tax-assessment map, not a survey. Shapefile without `.prj`; it is JGD2011 plane rectangular zone III (EPSG:6671) |
 | [登記所備付地図データ 福山市](https://www.geospatial.jp/ckan/dataset/houmusyouchizu-2026-1-1553) | 法務省 via G空間情報センター. 登記所備付地図データ利用規約 | 2026 edition. Arbitrary-coordinate (任意座標) sheets cannot be georeferenced and are excluded |
 | [地番マスター位置参照拡張（福山市）](https://dataset.address-br.digital.go.jp/dataset/ba-o1-342076_g2-000011) | デジタル庁. PDL1.0, plus the MOJ map terms | Used for search; city parcels fill the gaps |
