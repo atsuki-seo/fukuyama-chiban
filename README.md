@@ -43,7 +43,9 @@ boundaries, measure distances or areas, or confirm rights.
 | `fukuyama_mask.geojson` | World polygon with the city cut out |
 | `fonts/Noto Sans Medium/*.pbf` | Glyphs for label digits (SIL OFL, see `fonts/OFL.txt`) |
 | `tools/` | Data build and verification scripts |
-| `.nojekyll` | Disables Jekyll on GitHub Pages |
+| `plans/` | Design notes (not published) |
+| `.github/workflows/pages.yml` | Deploys to GitHub Pages. Only the paths it lists are published; add new site files there |
+| `.nojekyll` | Disables Jekyll if Pages is switched back to branch deployment |
 
 ### Vector tile schema
 

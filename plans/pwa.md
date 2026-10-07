@@ -53,6 +53,9 @@ tools/pwa-test/        Playwright 一式（node_modules は .gitignore）
 tools/sw-killswitch.js 緊急停止版の sw.js
 ```
 
+GitHub Pages は `.github/workflows/pages.yml` が列挙したパスだけを公開する。
+`manifest.webmanifest`、`icons/`、`sw.js`、`offline.html` は、追加するタスク（T1・T3）でこのワークフローの公開対象にも加える。
+
 ### sw.js の振る舞い
 
 ```text
@@ -184,6 +187,7 @@ fetch    : request.mode === 'navigate' のときだけ
 確認項目
 
 - **G6-1**（自動）本番 URL に対して G1-1 と G1-2 を実行し、通る。
+- **G6-1b**（自動）本番 URL で `manifest.webmanifest`、`sw.js`、`offline.html`、manifest に書いたアイコンが 200、`plans/pwa.md` と `tools/serve.py` が 404 を返す。
 - **G6-2**（手動）Android Chrome で自動インストール案内（ミニインフォバー）またはインストールボタンが出て、インストールできる。
 - **G6-3**（手動）iOS Safari で手順の文言が出る。ホーム画面に追加したときのアイコンと名前が正しい。
 - **G6-4**（手動）iPad 幅でスタンドアロン表示にしたとき、上部の UI がステータスバーと重ならない。重なる場合は、768px 以上のレイアウトにも `env(safe-area-inset-top)` を足す追加タスクを起こす。
@@ -208,4 +212,5 @@ T2 は T0 の後ならいつでも着手できる。T6 は他のすべてが終�
 | iOS / iPadOS の挙動 | 自動化できない | T6 の手動確認 |
 | 地理院タイルの規約上のキャッシュ可否 | 規約ページから判断できなかった | SW では扱わない方針で回避 |
 | SW が端末に残ること | 構造上のリスク | T5 の緊急停止を公開前に用意 |
-| `plans/` も GitHub Pages で公開される | push すると公開サイトから見える | 設計書に秘密情報は含めない |
+| 新しいサイト用ファイルの公開漏れ | Pages は `.github/workflows/pages.yml` の allowlist だけを公開する | T1・T3 で allowlist に追加し、G6-1b で確認する |
+| リポジトリ自体は公開 | `plans/` は Pages には出ないが github.com では見える | 設計書に秘密情報は含めない |
