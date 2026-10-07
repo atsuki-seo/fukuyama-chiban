@@ -1,0 +1,14 @@
+{
+  "name": "fukuyama-chiban-pwa-test",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "setup": "PLAYWRIGHT_BROWSERS_PATH=0 playwright install chromium",
+    "test": "node check-version.mjs && PLAYWRIGHT_BROWSERS_PATH=0 playwright test",
+    "test:prod": "PLAYWRIGHT_BROWSERS_PATH=0 BASE_URL=${BASE_URL:-https://atsuki-seo.github.io/fukuyama-chiban/} playwright test --grep @prod",
+    "check-version": "node check-version.mjs"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.63.0"
+  }
+}
