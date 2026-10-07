@@ -44,7 +44,7 @@
 ```
 index.html             <link rel="manifest">、theme-color、apple-touch-icon などを追加
                        SW の登録、インストールボタン、iOS 向け案内、共有ボタン
-manifest.webmanifest   start_url / scope / id = "./"
+manifest.webmanifest   start_url / scope = "./"（id は書かない。§7）
 icons/                 icon-192.png, icon-512.png, icon-maskable-512.png, apple-touch-icon.png
 sw.js                  画面遷移だけを扱う SW（VERSION は APP.version と一致させる）
 offline.html           外部依存のない単体ページ。「オンラインで使ってください」
@@ -105,7 +105,7 @@ fetch    : request.mode === 'navigate' のときだけ
 
 内容
 
-- `manifest.webmanifest`：`name`「福山市 地番マップ」、`short_name`、`start_url`・`scope`・`id` は `./`、`display: standalone`、`lang: ja`、`theme_color`・`background_color`、アイコン 3 種。
+- `manifest.webmanifest`：`name`「福山市 地番マップ」、`short_name`、`start_url`・`scope` は `./`、`id` は書かない（`start_url` と同じになる。§7）、`display: standalone`、`lang: ja`、`theme_color`・`background_color`、アイコン 3 種。
 - アイコンは今の SVG favicon から PNG を生成する（192、512、maskable 512、apple-touch-icon 180）。生成手順は README に書く。
 - `index.html` に `<link rel="manifest">`、`<meta name="theme-color">`、`<link rel="apple-touch-icon">`、`<meta name="apple-mobile-web-app-title">` を追加する。
 
@@ -231,6 +231,7 @@ T2 は T0 の後ならいつでも着手できる。T6 は他のすべてが終�
 | G4-4 | 3 本に分割：`navigator.standalone`（G4-4a）、CDP の `display-mode` 疑似（G4-4b、非対応なら skip）、判定関数 `installMode()` の表（G4-4c） | `display-mode` を再現できるかが未確認のため |
 | G4-1 | 実イベント版（G4-1）と疑似イベント版（G4-1b）の両方を置く | フラグが効くかを T0 で確認できなかったため（下記） |
 | 版番号 | `APP.version` と `sw.js` の `VERSION` を 1.1.0 に上げた | PWA 対応のリリースとして |
+| manifest の `id` | `"./"` → 書かない | 仕様では `id` は `start_url` の**オリジン**を基準に解決し、省略時は `start_url` になる（[W3C Web App Manifest](https://w3c.github.io/manifest/) の「process the `id` member」）。`"./"` は本番で `https://atsuki-seo.github.io/` になり、同じオリジンの他サイトの PWA と ID が重なりうる。ローカル（オリジン直下）では一致してしまうため、初回公開後の `npm run test:prod` の G1-2 で判明した |
 
 ### 検証状況
 

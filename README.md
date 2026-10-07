@@ -45,7 +45,7 @@ boundaries, measure distances or areas, or confirm rights.
 | `search.json`, `search/<n>.json` | Search index: town list, then one lot list per town loaded on demand |
 | `fukuyama_mask.geojson` | World polygon with the city cut out |
 | `fonts/Noto Sans Medium/*.pbf` | Glyphs for label digits (SIL OFL, see `fonts/OFL.txt`) |
-| `manifest.webmanifest` | Web app manifest (name, icons, `start_url` / `scope` / `id` = `./`) |
+| `manifest.webmanifest` | Web app manifest (name, icons, `start_url` / `scope` = `./`). No `id`: a relative `id` resolves against the origin (shared by every `<user>.github.io` site), and without one it defaults to `start_url` |
 | `icons/` | App icons: `*.svg` sources and the PNGs rendered from them |
 | `sw.js` | Service worker for page navigations only. `VERSION` must equal `APP.version` |
 | `offline.html` | Page shown when the app is opened without a connection (no external files) |

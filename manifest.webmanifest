@@ -2,7 +2,6 @@
   "name": "福山市 地番マップ",
   "short_name": "地番マップ",
   "description": "福山市の地番図と登記所備付地図を空中写真に重ねて表示する地図",
-  "id": "./",
   "start_url": "./",
   "scope": "./",
   "display": "standalone",

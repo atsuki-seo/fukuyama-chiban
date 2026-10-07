@@ -26,11 +26,14 @@ test('G1-2 manifest parses and matches BASE @prod', async ({ launch }) => {
   const base = await page.evaluate(() => BASE);
   const m = JSON.parse(res.data);
   // Resolved as the manifest spec does: start_url and scope against the
-  // manifest URL, id against start_url.
+  // manifest URL; id against start_url's *origin*, and start_url when absent.
+  // A relative id such as "./" would become the origin root, which every
+  // <user>.github.io site shares, so the manifest leaves id out.
   const startUrl = new URL(m.start_url, res.url).href;
   expect(startUrl).toBe(base);
   expect(new URL(m.scope, res.url).href).toBe(base);
-  expect(new URL(m.id, startUrl).href).toBe(base);
+  const id = typeof m.id === 'string' && m.id !== '' ? new URL(m.id, new URL(startUrl).origin).href : startUrl;
+  expect(id).toBe(base);
   expect(m.display).toBe('standalone');
   expect(m.lang).toBe('ja');
   // Chrome's own parse, where this Chrome version reports it.
