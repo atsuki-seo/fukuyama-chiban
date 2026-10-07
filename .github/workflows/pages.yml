@@ -25,6 +25,7 @@ jobs:
         run: |
           mkdir _site
           cp -R index.html *.pmtiles search.json search fukuyama_mask.geojson fonts _site/
+          cp -R manifest.webmanifest icons sw.js offline.html _site/
       - uses: actions/upload-pages-artifact@v5
         with:
           path: _site

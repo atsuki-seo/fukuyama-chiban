@@ -6,6 +6,10 @@
 <meta name="robots" content="noindex, nofollow, noarchive">
 <meta name="description" content="福山市の地番図と登記所備付地図を空中写真に重ねて表示する地図">
 <title>福山市 地番マップ</title>
+<link rel="manifest" href="manifest.webmanifest">
+<meta name="theme-color" content="#3a5a2a">
+<meta name="apple-mobile-web-app-title" content="地番マップ">
+<link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='6' fill='%233a5a2a'/%3E%3Cpath d='M4 10h12v8H4zM16 4h12v14H16zM4 18h16v10H4zM20 18h8v10h-8z' fill='none' stroke='%23FFD400' stroke-width='2'/%3E%3C/svg%3E">
 <link rel="preconnect" href="https://cyberjapandata.gsi.go.jp">
 <link rel="stylesheet" href="https://unpkg.com/maplibre-gl@5.24.0/dist/maplibre-gl.css" integrity="sha384-uTttxo/aOKbdE5RlD/SPzSDoDmNvGlUYPjONi2MN/b7c9HPSvW07OIuyP7uL6jxK" crossorigin="anonymous">
@@ -40,6 +44,7 @@ a { color: var(--accent); }
 :focus-visible { outline: 3px solid var(--focus); outline-offset: 2px; }
 button, input, select { font: inherit; color: inherit; }
 button { cursor: pointer; }
+[hidden] { display: none !important; }
 .visually-hidden {
   position: absolute; width: 1px; height: 1px; margin: -1px; padding: 0;
   overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; border: 0;
@@ -101,6 +106,9 @@ button { cursor: pointer; }
 #results .sub { color: var(--fg-sub); font-size: 12px; white-space: nowrap; }
 
 #panel-open, #panel-close { display: none; }
+#install-btn { width: 100%; margin-top: 10px; }
+#install-ios { margin: 10px 0 0; }
+.share-btn svg { display: block; margin: auto; }
 
 /* ---------- info (selected parcel) ---------- */
 .info h2 { font-size: 15px; margin: 0 0 6px; padding-right: 28px; }
@@ -214,6 +222,8 @@ button { cursor: pointer; }
     </div>
     <button id="panel-close" class="icon-btn" type="button" aria-label="設定を閉じる">×</button>
   </header>
+  <button id="install-btn" class="btn secondary" type="button" hidden>アプリとしてインストール</button>
+  <p id="install-ios" class="note" hidden>ホーム画面に追加すると、アプリのように使えます。画面下（iPad は右上）の共有ボタンから「ホーム画面に追加」を選んでください。</p>
 
   <fieldset>
     <legend>地番検索</legend>
@@ -316,8 +326,8 @@ button { cursor: pointer; }
 
 // Version, update date and data editions live here only.
 const APP = {
-  version: '1.0.0',
-  updated: '2026-10-06',
+  version: '1.1.0',
+  updated: '2026-10-07',
   author: 'atsuki-seo',
   center: [133.362, 34.490],
   zoom: 15,
@@ -423,15 +433,22 @@ function parseHash() {
   return view;
 }
 
+function viewHash() {
+  const c = map.getCenter();
+  const layers = LAYER_KEYS.filter(k => state[k]).join(',');
+  return `#map=${map.getZoom().toFixed(2)}/${c.lat.toFixed(5)}/${c.lng.toFixed(5)}&bg=${state.bg}&layers=${layers}`;
+}
+
+function flushHash() {
+  clearTimeout(hashTimer);
+  const h = viewHash();
+  if (h !== location.hash) history.replaceState(null, '', h);
+}
+
 let hashTimer = 0;
 function writeHash() {
   clearTimeout(hashTimer);
-  hashTimer = setTimeout(() => {
-    const c = map.getCenter();
-    const layers = LAYER_KEYS.filter(k => state[k]).join(',');
-    const h = `#map=${map.getZoom().toFixed(2)}/${c.lat.toFixed(5)}/${c.lng.toFixed(5)}&bg=${state.bg}&layers=${layers}`;
-    if (h !== location.hash) history.replaceState(null, '', h);
-  }, 250);
+  hashTimer = setTimeout(flushHash, 250);
 }
 
 const initial = parseHash();
@@ -614,6 +631,40 @@ function buildStyle() {
   };
 }
 
+// ---------------------------------------------------------------- share
+
+// The installed app has no address bar, so the view's URL is shared from here.
+async function shareView() {
+  flushHash();
+  const url = location.href;
+  if (typeof navigator.share === 'function') {
+    try {
+      await navigator.share({ title: document.title, url });
+      return;
+    } catch (e) {
+      if (e && e.name === 'AbortError') return;
+    }
+  }
+  try {
+    await navigator.clipboard.writeText(url);
+    toast('この地点の URL をコピーしました。');
+  } catch {
+    window.prompt('この URL をコピーしてください。', url);
+  }
+}
+
+function ShareControl() {}
+ShareControl.prototype.onAdd = function () {
+  const div = document.createElement('div');
+  div.className = 'maplibregl-ctrl maplibregl-ctrl-group';
+  div.innerHTML = '<button type="button" id="share-btn" class="share-btn" title="この地点を共有" aria-label="この地点を共有">' +
+    '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#333" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">' +
+    '<path d="M12 3v12M7 8l5-5 5 5M5 13v6a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-6"/></svg></button>';
+  div.querySelector('button').addEventListener('click', shareView);
+  return div;
+};
+ShareControl.prototype.onRemove = function () {};
+
 // ---------------------------------------------------------------- map
 
 const map = new maplibregl.Map({
@@ -655,6 +706,7 @@ const geo = new maplibregl.GeolocateControl({
 });
 map.addControl(nav, 'top-right');
 map.addControl(geo, 'top-right');
+map.addControl(new ShareControl(), 'top-right');
 map.addControl(new maplibregl.ScaleControl({ unit: 'metric', maxWidth: 120 }), 'bottom-left');
 
 geo.on('outofmaxbounds', () => toast('現在地は福山市の表示範囲外です。'));
@@ -1313,12 +1365,67 @@ function bindSearch() {
   q.addEventListener('input', () => { if (!q.value) { renderResults([]); setStatus(''); } });
 }
 
+// ---------------------------------------------------------------- install (PWA)
+
+const install = { prompt: null };
+
+// Which install hint to show: 'button' (Chromium can prompt), 'ios' (Add to
+// Home Screen steps; iOS has no prompt) or 'none' (already running as an app).
+function installMode({ standalone, ios, canPrompt }) {
+  if (standalone) return 'none';
+  if (canPrompt) return 'button';
+  if (ios) return 'ios';
+  return 'none';
+}
+
+function isStandalone() {
+  return window.matchMedia('(display-mode: standalone)').matches || navigator.standalone === true;
+}
+
+function isIos() {
+  // iPadOS reports itself as a Mac; touch support tells them apart.
+  return /iPhone|iPad|iPod/.test(navigator.userAgent) || (/Macintosh/.test(navigator.userAgent) && navigator.maxTouchPoints > 1);
+}
+
+function renderInstall() {
+  const mode = installMode({ standalone: isStandalone(), ios: isIos(), canPrompt: install.prompt !== null });
+  $('#install-btn').hidden = mode !== 'button';
+  $('#install-ios').hidden = mode !== 'ios';
+}
+
+function bindInstall() {
+  // No preventDefault(): Chrome may still show its own install banner.
+  window.addEventListener('beforeinstallprompt', e => { install.prompt = e; renderInstall(); });
+  window.addEventListener('appinstalled', () => { install.prompt = null; renderInstall(); });
+  $('#install-btn').addEventListener('click', async () => {
+    const e = install.prompt;
+    if (!e) return;
+    // A prompt event can be used once; Chrome sends a new one if it may ask again.
+    install.prompt = null;
+    renderInstall();
+    try { await e.prompt(); } catch { /* already shown or not allowed */ }
+  });
+  window.matchMedia('(display-mode: standalone)').addEventListener('change', renderInstall);
+  renderInstall();
+}
+
+// sw.js handles page navigations only (offline page); see README.
+function registerServiceWorker() {
+  if (!('serviceWorker' in navigator)) return;
+  window.addEventListener('load', () => {
+    navigator.serviceWorker.register('sw.js', { scope: './' })
+      .catch(e => console.warn('Service worker registration failed:', e));
+  });
+}
+
 // ---------------------------------------------------------------- start
 
 bindPanel();
 bindAttribution();
 bindSelection();
 bindSearch();
+bindInstall();
+registerServiceWorker();
 drawSwatches();
 
 renderAttribution();

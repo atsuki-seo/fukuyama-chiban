@@ -94,8 +94,10 @@ fetch    : request.mode === 'navigate' のときだけ
 
 ゴール
 
-- **G0-1** `#map=17/34.490/133.362` を開くと `map.querySourceFeatures('city-0', {sourceLayer: 'chiban'}).length > 0` になる。
+- **G0-1** `#map=17/34.490/133.362` を開くと `map.querySourceFeatures('city-1', {sourceLayer: 'chiban'}).length > 0` になる。
+  - 当初は `city-0` としていたが、34.490°N は中央の帯（`chiban_fukuyama_2026_1.pmtiles`、PMTiles ヘッダーの範囲 34.456〜34.538°N）に入り、`city-0` は 34.525°N 以北なので 0 件になる。§7 を参照。
 - **G0-2** 検索で「青葉台一丁目 4-1」を引くと結果が 1 件以上出る。
+  - 完全一致は 1 件で、結果一覧を出さずにその地点へ移動する。テストでは「青葉台一丁目 4-1 に移動します」の表示とマーカー 1 個で判定する。
 - **G0-3** `tools/serve.py` に `Range: bytes=0-15` を付けて `.pmtiles` を取得すると、206 で 16 バイトが返る。
 - G0-1 と G0-2 は、変更前の main で通ることを確認してから以降のタスクに進む（回帰テストの基準）。
 
@@ -214,3 +216,40 @@ T2 は T0 の後ならいつでも着手できる。T6 は他のすべてが終�
 | SW が端末に残ること | 構造上のリスク | T5 の緊急停止を公開前に用意 |
 | 新しいサイト用ファイルの公開漏れ | Pages は `.github/workflows/pages.yml` の allowlist だけを公開する | T1・T3 で allowlist に追加し、G6-1b で確認する |
 | リポジトリ自体は公開 | `plans/` は Pages には出ないが github.com では見える | 設計書に秘密情報は含めない |
+
+## 7. 実施記録（2026-10-07）
+
+### 計画からの変更
+
+| 項目 | 変更 | 理由 |
+| --- | --- | --- |
+| G0-1 の判定ソース | `city-0` → `city-1` | 地点 34.490°N は `city-1` の範囲。アプリ内ブラウザで `city-0` 0 件、`city-1` 2058 件を確認 |
+| G0-2 の判定 | 「移動します」の表示とマーカー 1 個 | 完全一致は結果一覧を出さずに移動する実装のため |
+| SW の古いキャッシュ削除・緊急停止のキャッシュ削除 | `fukuyama-chiban-` で始まるキャッシュだけを消す | `<user>.github.io` のオリジンは同じユーザーの他のサイトと共有のため |
+| テストのブラウザコンテキスト | 毎回、使い捨ての通常プロファイル（`launchPersistentContext`）で起動 | Chrome はシークレット扱いのコンテキストをインストール不可と判定し、`beforeinstallprompt` も出さない |
+| アイコンの生成 | `icons/*.svg` から `tools/make_icons.sh`（`rsvg-convert`）で生成 | 追加の依存なしで再現できる |
+| G4-4 | 3 本に分割：`navigator.standalone`（G4-4a）、CDP の `display-mode` 疑似（G4-4b、非対応なら skip）、判定関数 `installMode()` の表（G4-4c） | `display-mode` を再現できるかが未確認のため |
+| G4-1 | 実イベント版（G4-1）と疑似イベント版（G4-1b）の両方を置く | フラグが効くかを T0 で確認できなかったため（下記） |
+| 版番号 | `APP.version` と `sw.js` の `VERSION` を 1.1.0 に上げた | PWA 対応のリリースとして |
+
+### 検証状況
+
+テスト一式は `tools/pwa-test`（26 件）。2026-10-07 に利用者の端末で `npm test` を実行した結果：22 件合格、2 件失敗、2 件 skip。
+
+| ゴール | 状況 |
+| --- | --- |
+| G0-1〜G0-3、G1-1〜G1-5、G2-1、G3-1〜G3-8、G4-1、G4-2、G4-4a、G4-4c、G5-1・G5-2 | 合格 |
+| G4-1b、G4-3 | 初回は失敗 → テストを修正（下記）。再実行で合格（`t4-install.spec.js`：6 件合格、G4-4b は skip） |
+| G4-4b | skip：この Chromium は CDP で `display-mode` を疑似できない。G4-4a と G4-4c で代替 |
+| G6-1b | skip：ローカル実行では対象外（`npm run test:prod` で実行） |
+| G6-* | 未実施（公開は利用者が行う） |
+
+G4-1b・G4-3 の失敗の原因：Chromium 153（Chrome for Testing、headless）は、起動フラグがなくても、また iPhone の UA でも、本物の `beforeinstallprompt` を出した。そのため疑似イベントを送る前からボタンが表示され、iPhone の設定でも判定が `button` になった（実機の iPhone はこのイベントを出さない）。アプリの判定は正しく、テストの前提が誤っていた。修正：疑似イベントを使うテストでは、`isTrusted` の `beforeinstallprompt` をページより先に止める（`blockRealInstallPrompt`）。
+
+Claude Code の Bash サンドボックスでは Chromium が起動しない（macOS の Mach ポート登録が禁止され `bootstrap_check_in ... Permission denied`）。ブラウザを使うテストは利用者の端末で実行する。
+
+### 確定した事項
+
+- 起動フラグ `--bypass-app-banner-engagement-checks`：この Chromium ではフラグがなくても `beforeinstallprompt` が出るので、G4-1 は格下げせず実イベントで判定できる。フラグが効いているかどうかは判別できない。
+- `context.setOffline(true)` は SW の画面遷移にも効き、G3-4 で `offline.html` が出た。
+- 本番 URL は `https://atsuki-seo.github.io/fukuyama-chiban/`（2026-10-07 にトップが 200、`plans/pwa.md`・`tools/serve.py` が 404 であることを確認）。

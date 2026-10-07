@@ -31,6 +31,9 @@ boundaries, measure distances or areas, or confirm rights.
 - Shareable URL hash: `#map=<zoom>/<lat>/<lng>&bg=<photo|pale|std>&layers=city,moj,label,mask,road`
 - Mask that darkens everything outside the city
 - PC and smartphone layouts (< 768 px uses bottom sheets)
+- Installable as an app (PWA) on Chromium browsers and iOS / iPadOS; a share
+  button copies or shares the current view's URL, since the installed app has
+  no address bar
 
 ## Files
 
@@ -42,7 +45,11 @@ boundaries, measure distances or areas, or confirm rights.
 | `search.json`, `search/<n>.json` | Search index: town list, then one lot list per town loaded on demand |
 | `fukuyama_mask.geojson` | World polygon with the city cut out |
 | `fonts/Noto Sans Medium/*.pbf` | Glyphs for label digits (SIL OFL, see `fonts/OFL.txt`) |
-| `tools/` | Data build and verification scripts |
+| `manifest.webmanifest` | Web app manifest (name, icons, `start_url` / `scope` / `id` = `./`) |
+| `icons/` | App icons: `*.svg` sources and the PNGs rendered from them |
+| `sw.js` | Service worker for page navigations only. `VERSION` must equal `APP.version` |
+| `offline.html` | Page shown when the app is opened without a connection (no external files) |
+| `tools/` | Data build and verification scripts, `serve.py` (local server), `pwa-test/` (PWA tests), `sw-killswitch.js` |
 | `plans/` | Design notes (not published) |
 | `.github/workflows/pages.yml` | Deploys to GitHub Pages. Only the paths it lists are published; add new site files there |
 | `.nojekyll` | Disables Jekyll if Pages is switched back to branch deployment |
@@ -140,6 +147,82 @@ repository is public; only the processed tiles are published).
 
 ## Local preview
 
-PMTiles needs HTTP Range support, which `python -m http.server` lacks. Use any
-static server that answers `Range` with `206 Partial Content`, for example
-`npx http-server -p 8080`.
+PMTiles needs HTTP Range support, which `python -m http.server` lacks. Use
+`tools/serve.py`, which answers `Range` with `206 Partial Content`:
+
+```bash
+python3 tools/serve.py --port 8765
+```
+
+Then open <http://localhost:8765/>. Once the page has registered its service
+worker, it stays registered for `localhost:8765` in that browser; remove it in
+DevTools (Application → Service workers) when you use the port for something
+else.
+
+## Installing as an app (PWA)
+
+The map can be installed from Chromium browsers (install button in the
+settings panel, or the browser's own install banner / menu) and on iOS /
+iPadOS with Share → ホーム画面に追加 (the panel shows these steps there).
+
+It works **online only**. The lot tiles are about 155 MB and the search index
+about 21 MB, too much to keep on a device, so nothing of the map is stored
+offline. The service worker (`sw.js`) exists because Chrome's automatic install
+prompt needs a fetch handler, and it does as little as possible:
+
+- It handles page navigations only. The page always comes from the network
+  (with navigation preload); `offline.html`, its only cached file, is shown
+  when that fails.
+- Every other request (PMTiles, GSI tiles, unpkg, search JSON) is left alone.
+  PMTiles reads with HTTP Range and the Cache API cannot store 206 responses;
+  whether GSI tiles may be cached is not clear from their terms.
+- A new `sw.js` takes over at once (`skipWaiting` / `clients.claim`) and
+  deletes the old `fukuyama-chiban-*` caches. Other caches are left alone
+  because the `github.io` origin is shared with other sites.
+
+When releasing, change `APP.version` in `index.html` and `VERSION` in `sw.js`
+together (`npm run check-version` in `tools/pwa-test` checks this).
+
+### Stopping the service worker
+
+A published service worker stays on visitors' devices. If it misbehaves,
+publish `tools/sw-killswitch.js` in its place:
+
+```bash
+cp tools/sw-killswitch.js sw.js
+```
+
+Commit and push to `main`. Browsers check `sw.js` on their next visit; the
+stop version deletes this site's caches, unregisters itself and reloads the
+pages it controlled. `index.html` keeps registering `sw.js`, so later visits
+install the stop version again and it removes itself again, which is harmless.
+To go back, restore `sw.js` from Git with a `VERSION` newer than the broken
+one.
+
+### Icons
+
+`icons/*.png` are rendered from the SVG sources next to them
+(`icon.svg` is the favicon drawing, `icon-maskable.svg` keeps the drawing in
+the maskable safe zone, `apple-touch-icon.svg` has no transparent corners).
+After changing a source, run (needs `rsvg-convert`: `brew install librsvg`):
+
+```bash
+tools/make_icons.sh
+```
+
+### Tests
+
+`tools/pwa-test` holds Playwright (Chromium) tests for the goals in
+`plans/pwa.md`. They start `tools/serve.py` with `--allow-override`, which lets
+a test swap `sw.js` (new version, stop version) while the page is open.
+
+```bash
+cd tools/pwa-test
+npm install
+npm run setup      # downloads Chromium into node_modules
+npm test
+```
+
+`npm test` needs network access to unpkg.com and cyberjapandata.gsi.go.jp.
+`npm run test:prod` runs the `@prod` tests against the published site
+(override with `BASE_URL=https://.../`).

@@ -1,0 +1,18 @@
+{
+  "name": "福山市 地番マップ",
+  "short_name": "地番マップ",
+  "description": "福山市の地番図と登記所備付地図を空中写真に重ねて表示する地図",
+  "id": "./",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "lang": "ja",
+  "dir": "ltr",
+  "theme_color": "#3a5a2a",
+  "background_color": "#3a5a2a",
+  "icons": [
+    { "src": "icons/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "icons/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
+    { "src": "icons/icon-maskable-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ]
+}
