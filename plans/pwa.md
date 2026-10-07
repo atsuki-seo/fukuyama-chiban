@@ -243,7 +243,8 @@ T2 は T0 の後ならいつでも着手できる。T6 は他のすべてが終�
 | G4-1b、G4-3 | 初回は失敗 → テストを修正（下記）。再実行で合格（`t4-install.spec.js`：6 件合格、G4-4b は skip） |
 | G4-4b | skip：この Chromium は CDP で `display-mode` を疑似できない。G4-4a と G4-4c で代替 |
 | G6-1b | skip：ローカル実行では対象外（`npm run test:prod` で実行） |
-| G6-* | 未実施（公開は利用者が行う） |
+| G6-1、G6-1b | 合格（2026-10-07、`npm run test:prod` 6 件。初回は G1-2 が manifest の `id` で失敗し、`id` を外して再公開した後に合格） |
+| G6-2〜G6-5 | 未実施（実機での手動確認） |
 
 G4-1b・G4-3 の失敗の原因：Chromium 153（Chrome for Testing、headless）は、起動フラグがなくても、また iPhone の UA でも、本物の `beforeinstallprompt` を出した。そのため疑似イベントを送る前からボタンが表示され、iPhone の設定でも判定が `button` になった（実機の iPhone はこのイベントを出さない）。アプリの判定は正しく、テストの前提が誤っていた。修正：疑似イベントを使うテストでは、`isTrusted` の `beforeinstallprompt` をページより先に止める（`blockRealInstallPrompt`）。
 
